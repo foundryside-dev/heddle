@@ -121,3 +121,131 @@ class HeddleStore:
         if row is None:
             raise RuntimeError("missing schema_version")
         return int(row["value"])
+
+    def _repo_id(self, repo: Path) -> str:
+        return hashlib.sha256(str(repo.resolve()).encode("utf-8")).hexdigest()
+
+    def ensure_repo(self, repo: Path) -> str:
+        repo_id = self._repo_id(repo)
+        root = str(repo.resolve())
+        self.conn.execute(
+            "INSERT OR IGNORE INTO repos(id, root, remote_fingerprint) VALUES (?, ?, ?)",
+            (repo_id, root, None),
+        )
+        self.conn.commit()
+        return repo_id
+
+    def upsert_commit(self, repo_id: str, meta: dict[str, str]) -> None:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO commit_refs(
+              repo_id, sha, parents_json, author, authored_at, committed_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                repo_id,
+                meta["sha"],
+                meta["parents_json"],
+                meta["author"],
+                meta["authored_at"],
+                meta["committed_at"],
+            ),
+        )
+        self.conn.commit()
+
+    def ensure_entity_key(
+        self,
+        repo_id: str,
+        locator: str,
+        sei: str | None,
+        commit_sha: str,
+    ) -> int:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO entity_keys(
+              repo_id, locator, sei, first_seen_commit, last_seen_commit
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (repo_id, locator, sei, commit_sha, commit_sha),
+        )
+        self.conn.execute(
+            """
+            UPDATE entity_keys
+               SET last_seen_commit = ?
+             WHERE repo_id = ?
+               AND locator = ?
+               AND COALESCE(sei, '') = COALESCE(?, '')
+            """,
+            (commit_sha, repo_id, locator, sei),
+        )
+        row = self.conn.execute(
+            """
+            SELECT id FROM entity_keys
+             WHERE repo_id = ?
+               AND locator = ?
+               AND COALESCE(sei, '') = COALESCE(?, '')
+            """,
+            (repo_id, locator, sei),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError(f"failed to create entity key for {locator}")
+        self.conn.commit()
+        return int(row["id"])
+
+    def append_change_event(
+        self,
+        *,
+        repo_id: str,
+        entity_key_id: int,
+        commit_sha: str,
+        path: str,
+        change_kind: str,
+        actor: str,
+        changed_at: str,
+        hunk_summary: str = "",
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO change_events(
+              repo_id, entity_key_id, commit_sha, path, change_kind,
+              actor, changed_at, hunk_summary
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                repo_id,
+                entity_key_id,
+                commit_sha,
+                path,
+                change_kind,
+                actor,
+                changed_at,
+                hunk_summary,
+            ),
+        )
+        self.conn.commit()
+
+    def list_change_events(
+        self, repo: Path, commit_shas: set[str] | None = None
+    ) -> list[dict[str, object]]:
+        repo_id = self._repo_id(repo)
+        params: list[object] = [repo_id]
+        commit_filter = ""
+        if commit_shas is not None:
+            if not commit_shas:
+                return []
+            placeholders = ",".join("?" for _ in commit_shas)
+            commit_filter = f" AND ce.commit_sha IN ({placeholders})"
+            params.extend(sorted(commit_shas))
+        rows = self.conn.execute(
+            f"""
+            SELECT ce.commit_sha, ce.path, ce.change_kind, ce.actor, ce.changed_at,
+                   ek.locator, ek.sei
+              FROM change_events ce
+              JOIN entity_keys ek ON ek.id = ce.entity_key_id
+             WHERE ce.repo_id = ?
+             {commit_filter}
+             ORDER BY ce.changed_at, ce.id
+            """,
+            params,
+        ).fetchall()
+        return [dict(row) for row in rows]
