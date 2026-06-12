@@ -13,6 +13,12 @@ tools in solo mode and better with federation member enrichment.
 - Agent-first MCP productization - status: **product-candidate ready**. The
   dogfood evaluator proves 10/10 solo parity through MCP in 2 tool calls or
   fewer.
+- MCP-first federation polish - status: **analysis complete, not implemented**.
+  See
+  [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md)
+  for the next P1 surface gaps: namespaced aliases, `structuredContent`,
+  specific output schemas, filters/sort/pagination, and recoverable error
+  codes.
 - Federation admission readiness - status: Heddle-owned contracts and consumer
   ticket package exist as pre-admission drafts; Heddle-side federation uplift is
   implemented and proven in the seeded dogfood lane. Sibling-side tickets remain
@@ -55,10 +61,15 @@ tools in solo mode and better with federation member enrichment.
   `ingest-commit`, with clean degradation when Loomweave is unavailable.
 - Added `dogfood-eval`, producing `/tmp/heddle-dogfood-results.json`; current
   run proves 10/10 solo parity and 10/10 federation uplift.
+- Added the federation value-add and MCP-first audit that maps pairwise value
+  against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
+  Shuttle/Codeweave-style execution member.
 
 ## Next session, start here
 
 Execute [`docs/plans/2026-06-13-heddle-1-0-readiness.md`](../plans/2026-06-13-heddle-1-0-readiness.md).
 Keep productization evidence fresh by running `heddle dogfood-eval` before
-`heddle productization-gate`. Do not dispatch sibling tickets until owner
-admission is explicit.
+`heddle productization-gate`. For further product work, start with the P1 MCP
+contract refactor in
+[`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md).
+Do not dispatch sibling tickets until owner admission is explicit.
