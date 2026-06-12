@@ -39,6 +39,22 @@ def test_tools_list_contains_changed_and_timeline() -> None:
         output_schema = tool["outputSchema"]
         assert "outputSchema" in tool
         assert output_schema["required"] == ["schema", "ok", "data", "warnings", "meta"]
+        metadata = tool["metadata"]
+        assert metadata["requires_repo"] is True
+        assert isinstance(metadata["idempotent"], bool)
+        assert isinstance(metadata["writes_local_state"], bool)
+        assert ".weft/heddle/" in metadata["mutates_paths"]
+
+
+def test_capture_snapshot_metadata_exposes_local_write_and_loomweave_dependency() -> None:
+    response = dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
+    tools = response["result"]["tools"]
+    capture_snapshot = next(tool for tool in tools if tool["name"] == "capture_snapshot")
+    metadata = capture_snapshot["metadata"]
+    assert metadata["read_only"] is False
+    assert metadata["writes_local_state"] is True
+    assert metadata["idempotent"] is True
+    assert metadata["federation_dependencies"] == ["loomweave"]
 
 
 def test_unknown_tool_is_structured_error() -> None:

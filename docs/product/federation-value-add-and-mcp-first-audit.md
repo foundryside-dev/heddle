@@ -760,10 +760,9 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
 
 ### Cross-cutting MCP gaps
 
-1. P1 - Responses are JSON serialized inside text content only.
-   Heddle should add `structuredContent` with the same object and keep text as a
-   compact human-readable fallback. Agents should not have to parse a string
-   field to recover the product contract.
+1. Resolved for core tool results - responses now include `structuredContent`.
+   Text content remains as a compatibility fallback, but agents no longer have
+   to parse a JSON string to recover the product contract.
 
 2. P1 - Output schemas are too generic.
    Every tool advertises the same `{schema, ok, data, warnings, meta}` shell.
@@ -776,16 +775,14 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
    or graph size. Every list-like result needs `limit`, `cursor` or `offset`,
    `sort_by`, and `sort_order`, plus documented default ordering.
 
-4. P1 - Tool descriptions are not workflow-oriented enough.
-   They state what each tool returns, but they do not consistently describe
-   when to call it, what to do next, whether it mutates local state, and how to
-   recover from thin or degraded answers.
+4. Partially resolved - tool descriptions now say when to call the tool, what
+   to call next, and how degraded states should be interpreted. Namespaced
+   aliases and specific output schemas remain the larger contract-refactor work.
 
-5. P1 - Error envelopes are JSON-RPC structured, but not yet product
-   recoverable.
-   Errors include a reason string, but they need stable `error.code`,
-   `retryability`, `hint`, and the rejected field. Agents should switch on code,
-   not parse text.
+5. Partially resolved - core recoverable errors now use `heddle.error.v1` with
+   stable `error_code`, `retryability`, `hint`, and rejected-field data where
+   applicable. A broader federation-wide error taxonomy is still needed before
+   glossary freeze.
 
 6. P1 - `changed_entity_key_ids` leaks internal database ids into the primary
    agent workflow.
@@ -794,10 +791,9 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
    prior tool output need first-class inputs that do not require knowing Heddle
    internals.
 
-7. P1 - Mutability and idempotency are not visible in `tools/list`.
-   `capture_snapshot` mutates only `.weft/heddle`, but the tool should declare
-   idempotency, concurrency, local-only mutation, and peer side-effect facts in
-   the live MCP tool definition, not only in fixtures/docs.
+7. Resolved for current tools - live `tools/list` metadata now declares
+   read/local-write status, idempotency, touched local paths, concurrency, repo
+   requirement, and federation dependencies.
 
 8. P2 - MCP resources are missing.
    Contract resources like `heddle://contracts/heddle.change_list.v1`,
@@ -909,16 +905,17 @@ if_stale_after, max_entities, idempotency_key, dry_run=false)`.
 
 Priority: P1.
 
-Add namespaced aliases, `structuredContent`, specific output schemas, list
-pagination, filter/sort parameters, and live tool metadata for mutability,
-local-only behavior, idempotency, and authority boundaries.
+Add namespaced aliases, specific output schemas, list pagination, filter/sort
+parameters, and resource contracts. `structuredContent` and live
+mutability/idempotency metadata are already present for current tools.
 
 Acceptance:
 
 - Every core tool has a namespaced alias.
-- Every result has `structuredContent` and a bounded/paginated data shape.
+- Every result keeps `structuredContent` and gains a bounded/paginated data
+  shape where list-like.
 - Every list-like tool supports filters, sort, and limit/cursor.
-- Every error has stable code, retryability, rejected field, and hint.
+- Every error aligns with the federation-wide stable code taxonomy.
 - Golden MCP fixtures cover the new aliases and the old shims.
 
 ### Slice 2 - Risk-weighted reverify

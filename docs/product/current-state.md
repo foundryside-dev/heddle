@@ -14,12 +14,14 @@ tools in solo mode and better with federation member enrichment.
   dogfood evaluator now gates readiness on a real Lacuna benchmark: executed
   `git diff --name-only` plus `rg` baseline, MCP `capture_snapshot`, MCP
   `changed`, and MCP `reverify` with a non-empty worklist.
-- MCP-first federation polish - status: **analysis complete, not implemented**.
+- MCP-first federation polish - status: **partially implemented while awaiting
+  federation review**.
   See
   [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md)
-  for the next P1 surface gaps: namespaced aliases, `structuredContent`,
-  specific output schemas, filters/sort/pagination, and recoverable error
-  codes.
+  for the remaining P1 surface gaps: namespaced aliases, specific output
+  schemas, filters/sort/pagination, and broader recoverable error taxonomy.
+  Live `tools/list` now includes mutability/idempotency metadata, and
+  `heddle mcp-smoke` provides an operator-grade stdio check.
 - Federation admission readiness - status: Heddle-owned contracts and consumer
   ticket package exist as pre-admission drafts; Heddle-side federation uplift is
   implemented and proven against actual Loomweave MCP on Lacuna. Sibling-side
@@ -64,6 +66,10 @@ tools in solo mode and better with federation member enrichment.
   current run proves 1/1 real-member baseline parity, 1/1 real Loomweave uplift
   with 522 captured edges and 4 reverify items, plus 10/10 seeded federation
   smoke cases.
+- Added MCP-first wait-time polish: `tools/list` metadata for read/local-write
+  status, idempotency, touched paths, and federation dependencies; configurable
+  `dogfood-eval --real-member-repo`; and `heddle mcp-smoke` for a real stdio
+  initialize/tools/list/tool-error survivability check.
 - Added the federation value-add and MCP-first audit that maps pairwise value
   against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
   Shuttle/Codeweave-style execution member.
@@ -74,9 +80,9 @@ tools in solo mode and better with federation member enrichment.
 ## Next session, start here
 
 Execute [`docs/plans/2026-06-13-heddle-1-0-readiness.md`](../plans/2026-06-13-heddle-1-0-readiness.md).
-Keep productization evidence fresh by running `heddle dogfood-eval` before
-`heddle productization-gate`. For further product work, start with the P1 MCP
-contract refactor in
+Keep productization evidence fresh by running `heddle dogfood-eval` and
+`heddle mcp-smoke` before `heddle productization-gate`. For further product
+work, start with the remaining P1 MCP contract refactor in
 [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md).
 If the federation side endorses that document, treat its Interface Endorsement
 Package as the agreed implementation target. Do not dispatch sibling tickets

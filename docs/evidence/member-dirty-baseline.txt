@@ -1,18 +1,6 @@
 ## /home/john/filigree
  M CHANGELOG.md
  M README.md
-M  docs/cli.md
-M  docs/mcp.md
-M  src/filigree/cli_commands/files.py
-M  src/filigree/dashboard_routes/files.py
-M  src/filigree/db_files.py
-M  src/filigree/mcp_tools/files.py
- M src/filigree/mcp_tools/issues.py
-M  src/filigree/types/inputs.py
-M  tests/api/test_files_api.py
-M  tests/cli/test_files_commands.py
-M  tests/core/test_finding_triage.py
-M  tests/mcp/test_finding_triage_tools.py
  M uv.lock
 ## /home/john/wardline
  M CHANGELOG.md
@@ -27,10 +15,9 @@ M  tests/mcp/test_finding_triage_tools.py
  M www/styles.css
 ## /home/john/legis
 ## /home/john/loomweave
- M crates/loomweave-cli/src/analyze.rs
- M crates/loomweave-mcp/src/index_diff.rs
- M crates/loomweave-mcp/src/snapshot.rs
- M crates/loomweave-mcp/src/tools/status.rs
+ M crates/loomweave-federation/src/filigree.rs
+ M crates/loomweave-mcp/src/lib.rs
+ M crates/loomweave-mcp/src/tools/graph.rs
  M crates/loomweave-mcp/tests/storage_tools.rs
 ## /home/john/charter
 ?? src/charter/__pycache__/

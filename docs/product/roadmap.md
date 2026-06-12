@@ -18,7 +18,8 @@ Do not compute WSJF here; hand the committed bet over for sequencing.
 
 - **MCP contract refactor** - add namespaced aliases, `structuredContent`,
   specific output schemas, list filters/sort/pagination, recoverable error
-  codes, and live mutability/idempotency metadata before glossary freeze.
+  codes, and resource contracts before glossary freeze. Live
+  mutability/idempotency metadata is already present in `tools/list`.
 - **Bounded live-repo ingestion strategy** - replace unbounded live-member
   backfill with explicit bounded, incremental, and resumable workflows.
 - **Post-admission consumer package** - turn Heddle-owned draft contracts into

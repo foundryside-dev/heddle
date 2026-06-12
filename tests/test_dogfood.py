@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from heddle import cli
 from heddle.dogfood import run_dogfood_evaluator
 
@@ -45,8 +47,8 @@ def test_dogfood_evaluator_writes_required_machine_readable_contract(
             "uplift",
             "failure_reason",
             "manual_escape_required",
-                "enrichment_state",
-            } <= set(case)
+            "enrichment_state",
+        } <= set(case)
         assert case["tool_calls"] <= 2
         assert case["manual_escape_required"] is False
 
@@ -69,3 +71,37 @@ def test_cli_dogfood_eval_writes_output(tmp_path: Path) -> None:
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["ready"] is False
+
+
+def test_cli_dogfood_eval_accepts_custom_real_member_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_run_dogfood_evaluator(**kwargs: object) -> dict[str, object]:
+        seen.update(kwargs)
+        return {"ready": True}
+
+    repo = tmp_path / "member"
+    repo.mkdir()
+    output = tmp_path / "dogfood.json"
+    monkeypatch.setattr(cli, "run_dogfood_evaluator", fake_run_dogfood_evaluator)
+
+    assert (
+        cli.main(
+            [
+                "dogfood-eval",
+                "--output",
+                str(output),
+                "--work-dir",
+                str(tmp_path / "work"),
+                "--real-member-repo",
+                str(repo),
+                "--json",
+            ]
+        )
+        == 0
+    )
+    assert seen["real_member_repo"] == repo
+    assert seen["require_real_member"] is True

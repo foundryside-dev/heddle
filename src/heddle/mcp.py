@@ -23,10 +23,34 @@ CORE_OUTPUT_SCHEMA = {
 
 SUPPORTED_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26")
 
+
+def _metadata(
+    *,
+    read_only: bool,
+    writes_local_state: bool,
+    idempotent: bool,
+    mutates_paths: list[str],
+    federation_dependencies: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "read_only": read_only,
+        "writes_local_state": writes_local_state,
+        "idempotent": idempotent,
+        "mutates_paths": mutates_paths,
+        "requires_repo": True,
+        "federation_dependencies": federation_dependencies or [],
+        "concurrency": "safe; serialized by SQLite writer locks for local store writes",
+    }
+
+
 TOOLS = [
     {
         "name": "changed",
-        "description": "List changed entities for an ingested repo. Read-only.",
+        "description": (
+            "Use first to list changed entities for an ingested repo and get the "
+            "ready-to-call reverify next action. Does not mutate source files or "
+            "siblings; may initialize .weft/heddle local state."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"repo": {"type": "string"}, "rev_range": {"type": "string"}},
@@ -34,10 +58,20 @@ TOOLS = [
             "additionalProperties": False,
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
+        "metadata": _metadata(
+            read_only=True,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/heddle/"],
+        ),
     },
     {
         "name": "timeline",
-        "description": "List recorded changes for one entity locator or SEI. Read-only.",
+        "description": (
+            "Use when changed output names an entity and the agent needs its recorded "
+            "change history. Does not mutate source files or siblings; may initialize "
+            ".weft/heddle local state."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {"repo": {"type": "string"}, "entity": {"type": "string"}},
@@ -45,11 +79,19 @@ TOOLS = [
             "additionalProperties": False,
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
+        "metadata": _metadata(
+            read_only=True,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/heddle/"],
+        ),
     },
     {
         "name": "blast_radius",
         "description": (
-            "Return downstream affected entities from stored dated snapshots. Read-only."
+            "Use after changed when an agent needs downstream affected entities from "
+            "stored dated snapshots. NO_SNAPSHOT means call capture_snapshot or proceed "
+            "with changed-set-only verification."
         ),
         "inputSchema": {
             "type": "object",
@@ -62,10 +104,21 @@ TOOLS = [
             "additionalProperties": False,
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
+        "metadata": _metadata(
+            read_only=True,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/heddle/"],
+            federation_dependencies=["loomweave snapshot optional"],
+        ),
     },
     {
         "name": "reverify",
-        "description": "Render an agent-first re-verification worklist from blast-radius output.",
+        "description": (
+            "Use after changed or blast_radius to render the agent worklist to recheck "
+            "before claiming completion. FULL/DELTA results include graph-enriched "
+            "work; NO_SNAPSHOT is an honest changed-set-only answer."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -77,11 +130,19 @@ TOOLS = [
             "additionalProperties": False,
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
+        "metadata": _metadata(
+            read_only=True,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/heddle/"],
+            federation_dependencies=["loomweave snapshot optional"],
+        ),
     },
     {
         "name": "capture_snapshot",
         "description": (
-            "Capture a dated Loomweave edge snapshot into Heddle's local store. "
+            "Use when blast_radius or reverify reports NO_SNAPSHOT and Loomweave is "
+            "available. Captures dated Loomweave edges into Heddle's local store. "
             "Mutates only .weft/heddle state; never mutates sibling repos."
         ),
         "inputSchema": {
@@ -95,6 +156,13 @@ TOOLS = [
             "additionalProperties": False,
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
+        "metadata": _metadata(
+            read_only=False,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/heddle/"],
+            federation_dependencies=["loomweave"],
+        ),
     },
 ]
 

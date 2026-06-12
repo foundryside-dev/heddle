@@ -9,6 +9,7 @@ from heddle.dogfood import DEFAULT_DOGFOOD_RESULTS, REAL_MEMBER_REPO, run_dogfoo
 from heddle.git import backfill, ingest_commit
 from heddle.install import install_hook
 from heddle.loomweave import LoomweaveMcpClient, LoomweaveProbe, ToolClient
+from heddle.mcp_smoke import run_mcp_smoke
 from heddle.productization import read_productization_decision
 from heddle.store import HeddleStore, default_store_path
 
@@ -95,8 +96,14 @@ def build_parser() -> argparse.ArgumentParser:
     dogfood_parser = sub.add_parser("dogfood-eval")
     dogfood_parser.add_argument("--output", type=Path, default=DEFAULT_DOGFOOD_RESULTS)
     dogfood_parser.add_argument("--work-dir", type=Path)
+    dogfood_parser.add_argument("--real-member-repo", type=Path, default=REAL_MEMBER_REPO)
     dogfood_parser.add_argument("--skip-real-member", action="store_true")
     dogfood_parser.add_argument("--json", action="store_true")
+
+    mcp_smoke = sub.add_parser("mcp-smoke")
+    mcp_smoke.add_argument("--repo", type=Path, default=Path("."))
+    mcp_smoke.add_argument("--no-bad-input", action="store_true")
+    mcp_smoke.add_argument("--json", action="store_true")
 
     productization_parser = sub.add_parser("productization-gate")
     productization_parser.add_argument("--report", default="spike/REPORT.md")
@@ -176,11 +183,15 @@ def main(argv: list[str] | None = None) -> int:
         payload = run_dogfood_evaluator(
             output_path=args.output,
             work_dir=args.work_dir,
-            real_member_repo=None if args.skip_real_member else REAL_MEMBER_REPO,
+            real_member_repo=None if args.skip_real_member else args.real_member_repo,
             require_real_member=not args.skip_real_member,
         )
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0 if payload["ready"] else 2
+    if args.command == "mcp-smoke":
+        payload = run_mcp_smoke(args.repo, include_bad_input=not args.no_bad_input)
+        print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
+        return 0 if payload["ok"] else 2
     if args.command == "productization-gate":
         decision = read_productization_decision(
             Path(args.report),

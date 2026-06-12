@@ -5,6 +5,11 @@
     {
       "name": "blast_radius",
       "mutates": false,
+      "read_only": true,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [".weft/heddle/"],
+      "federation_dependencies": ["loomweave snapshot optional"],
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Traverses Heddle's dated snapshots; does not answer current graph truth."
@@ -12,6 +17,11 @@
     {
       "name": "capture_snapshot",
       "mutates": true,
+      "read_only": false,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [".weft/heddle/"],
+      "federation_dependencies": ["loomweave"],
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Captures dated edge snapshots into Heddle local state; does not mutate sibling repos or claim current graph truth."
@@ -19,6 +29,11 @@
     {
       "name": "changed",
       "mutates": false,
+      "read_only": true,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [".weft/heddle/"],
+      "federation_dependencies": [],
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Returns temporal change facts from git/Heddle store."
@@ -26,6 +41,11 @@
     {
       "name": "reverify",
       "mutates": false,
+      "read_only": true,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [".weft/heddle/"],
+      "federation_dependencies": ["loomweave snapshot optional"],
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Returns reverify worklists; does not file work or govern changes."
@@ -33,6 +53,11 @@
     {
       "name": "timeline",
       "mutates": false,
+      "read_only": true,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [".weft/heddle/"],
+      "federation_dependencies": [],
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Returns per-entity change timeline; does not resolve current structure."

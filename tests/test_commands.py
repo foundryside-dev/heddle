@@ -102,3 +102,26 @@ def test_cli_backfill_with_resolve_sei_degrades_without_loomweave(
         "status": "skipped",
         "reason": "command_unavailable",
     }
+
+
+def test_cli_mcp_smoke_exercises_stdio_server(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init"], repo)
+
+    assert cli.main(["mcp-smoke", "--repo", str(repo), "--json"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "heddle.mcp_smoke.v1"
+    assert payload["ok"] is True
+    check_names = {check["name"] for check in payload["checks"]}
+    assert {
+        "initialize_spec_complete",
+        "tools_list_available",
+        "changed_call_returns_payload",
+        "bad_tool_error_structured",
+        "server_survives_after_tool_error",
+    } <= check_names

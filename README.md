@@ -42,9 +42,16 @@ enrichment is present.
 
 The 2026-06-13 live review found the prototype below that bar. Since then,
 production SEI resolution, production edge snapshot capture, MCP recovery
-hardening, and the executable 10-case solo/federation dogfood evaluator have
+hardening, a real-member dogfood evaluator, and an MCP stdio smoke command have
 landed. The current readiness verdict in [`spike/REPORT.md`](spike/REPORT.md)
 is `ready`; admission and sibling-side tickets remain owner-gated.
+
+Operator checks:
+
+```bash
+heddle mcp-smoke --repo . --json
+heddle dogfood-eval --real-member-repo /home/john/lacuna --json
+```
 
 Federation admission is still not claimed here. The current product decision is
 recorded in [`docs/product/decisions/0001-product-candidate-ownership.md`](docs/product/decisions/0001-product-candidate-ownership.md):

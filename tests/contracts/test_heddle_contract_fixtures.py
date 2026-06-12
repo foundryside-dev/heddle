@@ -27,6 +27,11 @@ def test_mcp_tool_inventory_is_agent_first_and_enrich_only() -> None:
             assert tool["mutates"] is False
         assert tool["local_only"] is True
         assert tool["peer_side_effects"] == []
+        assert isinstance(tool["read_only"], bool)
+        assert tool["writes_local_state"] is True
+        assert tool["idempotent"] is True
+        assert tool["mutates_paths"] == [".weft/heddle/"]
+        assert isinstance(tool["federation_dependencies"], list)
         assert tool["authority_boundary"]
 
 
