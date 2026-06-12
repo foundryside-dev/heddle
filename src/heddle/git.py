@@ -94,3 +94,30 @@ def backfill(store: HeddleStore, repo: Path, since: str | None = None) -> dict[s
                 )
         count += 1
     return {"commits": count}
+
+
+def ingest_commit(store: HeddleStore, repo: Path, sha: str) -> dict[str, Any]:
+    repo_id = store.ensure_repo(repo)
+    resolved = _git(repo, ["rev-parse", sha]).strip()
+    meta = _commit_meta(repo, resolved)
+    store.upsert_commit(repo_id, meta)
+    changed = 0
+    for status, path in _name_status(repo, resolved):
+        for locator in _locators_for_path(repo, resolved, path):
+            key_id = store.ensure_entity_key(
+                repo_id,
+                locator=locator,
+                sei=None,
+                commit_sha=resolved,
+            )
+            store.append_change_event(
+                repo_id=repo_id,
+                entity_key_id=key_id,
+                commit_sha=resolved,
+                path=path,
+                change_kind=_change_kind(status),
+                actor=meta["author"],
+                changed_at=meta["authored_at"],
+            )
+            changed += 1
+    return {"commit": resolved, "changes": changed}

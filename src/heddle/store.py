@@ -265,3 +265,11 @@ class HeddleStore:
             (repo_id, entity, entity),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def log_health(self, repo: Path, code: str, message: str) -> None:
+        repo_id = self.ensure_repo(repo)
+        self.conn.execute(
+            "INSERT INTO health_log(repo_id, code, message) VALUES (?, ?, ?)",
+            (repo_id, code, message),
+        )
+        self.conn.commit()
