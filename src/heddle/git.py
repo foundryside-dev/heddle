@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from heddle.locators import python_entity_locators
 from heddle.store import HeddleStore
 
 
@@ -57,6 +58,22 @@ def _name_status(repo: Path, sha: str) -> list[tuple[str, str]]:
     return rows
 
 
+def _file_at_commit(repo: Path, sha: str, path: str) -> str | None:
+    try:
+        return _git(repo, ["show", f"{sha}:{path}"])
+    except subprocess.CalledProcessError:
+        return None
+
+
+def _locators_for_path(repo: Path, sha: str, path: str) -> list[str]:
+    if not path.endswith(".py"):
+        return [f"file:{path}"]
+    source = _file_at_commit(repo, sha, path)
+    if source is None:
+        return [f"file:{path}"]
+    return python_entity_locators(path, source)
+
+
 def backfill(store: HeddleStore, repo: Path, since: str | None = None) -> dict[str, Any]:
     repo_id = store.ensure_repo(repo)
     count = 0
@@ -64,16 +81,16 @@ def backfill(store: HeddleStore, repo: Path, since: str | None = None) -> dict[s
         meta = _commit_meta(repo, sha)
         store.upsert_commit(repo_id, meta)
         for status, path in _name_status(repo, sha):
-            locator = f"file:{path}"
-            key_id = store.ensure_entity_key(repo_id, locator=locator, sei=None, commit_sha=sha)
-            store.append_change_event(
-                repo_id=repo_id,
-                entity_key_id=key_id,
-                commit_sha=sha,
-                path=path,
-                change_kind=_change_kind(status),
-                actor=meta["author"],
-                changed_at=meta["authored_at"],
-            )
+            for locator in _locators_for_path(repo, sha, path):
+                key_id = store.ensure_entity_key(repo_id, locator=locator, sei=None, commit_sha=sha)
+                store.append_change_event(
+                    repo_id=repo_id,
+                    entity_key_id=key_id,
+                    commit_sha=sha,
+                    path=path,
+                    change_kind=_change_kind(status),
+                    actor=meta["author"],
+                    changed_at=meta["authored_at"],
+                )
         count += 1
     return {"commits": count}
