@@ -8,17 +8,23 @@ from heddle.productization import ProductizationDecision, read_productization_de
 def write_dogfood_results(
     path: Path,
     *,
-    solo: int,
-    federation: int,
+    parity: int,
+    uplift: int,
+    baseline: int,
+    ready: bool = True,
 ) -> None:
     path.write_text(
         (
             "{"
             '"schema":"heddle.dogfood_results.v1",'
-            '"ready":true,'
-            '"thresholds":{"solo_parity":8,"federation_uplift":8},'
-            f'"summary":{{"solo":{{"parity":{solo}}},'
-            f'"federation":{{"uplift":{federation}}}}},'
+            f'"ready":{str(ready).lower()},'
+            '"thresholds":{'
+            '"real_member_parity":1,'
+            '"real_loomweave_uplift":1,'
+            '"real_baseline_executed":1'
+            "},"
+            f'"summary":{{"real_member":{{"parity":{parity},'
+            f'"uplift":{uplift},"baseline_executed":{baseline}}}}},'
             '"cases":[]'
             "}\n"
         ),
@@ -58,7 +64,7 @@ def test_productization_gate_allows_go_with_passing_dogfood(tmp_path: Path) -> N
         encoding="utf-8",
     )
     dogfood = tmp_path / "dogfood.json"
-    write_dogfood_results(dogfood, solo=8, federation=8)
+    write_dogfood_results(dogfood, parity=1, uplift=1, baseline=1)
     decision = read_productization_decision(report, dogfood_results_path=dogfood)
     assert decision.allowed is True
     assert decision.recommendation == "go"
@@ -71,7 +77,7 @@ def test_productization_gate_blocks_go_with_failing_dogfood(tmp_path: Path) -> N
         encoding="utf-8",
     )
     dogfood = tmp_path / "dogfood.json"
-    write_dogfood_results(dogfood, solo=8, federation=7)
+    write_dogfood_results(dogfood, parity=1, uplift=0, baseline=1)
     decision = read_productization_decision(report, dogfood_results_path=dogfood)
     assert decision.allowed is False
     assert decision.recommendation == "dogfood-failed"

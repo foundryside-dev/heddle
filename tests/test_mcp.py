@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -63,9 +65,30 @@ def test_bad_tool_arguments_are_structured_error() -> None:
     )
     assert response["error"]["code"] == -32602
     assert response["error"]["message"] == "invalid params"
-    assert response["error"]["details"]["reason"] == (
+    assert response["error"]["data"]["reason"] == (
         "repo is required and must be a non-empty string"
     )
+    assert response["error"]["data"]["schema"] == "heddle.error.v1"
+
+
+def test_initialize_is_spec_complete() -> None:
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "0"},
+            },
+        }
+    )
+    result = response["result"]
+    assert result["protocolVersion"] == "2025-03-26"
+    assert result["serverInfo"]["name"] == "heddle"
+    assert result["serverInfo"]["version"]
+    assert result["capabilities"] == {"tools": {}}
 
 
 def test_mcp_main_degrades_malformed_json_and_continues(
@@ -83,6 +106,52 @@ def test_mcp_main_degrades_malformed_json_and_continues(
     lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert lines[0]["error"]["code"] == -32700
     assert lines[1]["result"]["tools"]
+
+
+def test_mcp_stdio_tool_error_is_structured_and_server_continues(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run(["git", "init"], repo)
+    requests = [
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-03-26",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "0"},
+            },
+        },
+        {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": "changed",
+                "arguments": {"repo": str(repo), "rev_range": "not-a-rev"},
+            },
+        },
+        {"jsonrpc": "2.0", "id": 3, "method": "tools/list", "params": {}},
+    ]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    proc = subprocess.run(
+        [sys.executable, "-c", "from heddle.mcp import main; raise SystemExit(main())"],
+        input="\n".join(json.dumps(request) for request in requests) + "\n",
+        text=True,
+        capture_output=True,
+        env=env,
+        check=True,
+        timeout=10,
+    )
+    responses = [json.loads(line) for line in proc.stdout.splitlines()]
+    assert responses[0]["result"]["protocolVersion"] == "2025-03-26"
+    assert responses[1]["error"]["code"] == -32602
+    assert responses[1]["error"]["data"]["schema"] == "heddle.error.v1"
+    assert responses[1]["error"]["data"]["error_code"] == "invalid_rev_range"
+    assert responses[1]["error"]["data"]["rejected_field"] == "rev_range"
+    assert responses[2]["result"]["tools"]
 
 
 def test_changed_response_feeds_reverify_in_two_tool_calls(

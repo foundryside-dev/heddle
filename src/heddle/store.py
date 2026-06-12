@@ -79,11 +79,30 @@ CREATE TABLE IF NOT EXISTS health_log (
 );
 """
 
+HEDDLE_GITIGNORE_CONTENTS = """\
+# Heddle .gitignore - local runtime store
+# Tracked: this .gitignore only.
+
+heddle.db
+*.db-wal
+*.db-shm
+*-wal
+*-shm
+*.lock
+tmp/
+"""
+
 
 def default_store_path(repo: Path, base_dir: Path | None = None) -> Path:
     root = repo.resolve()
     state = base_dir or root / ".weft" / "heddle"
     return state / "heddle.db"
+
+
+def _ensure_store_gitignore(store_dir: Path) -> None:
+    gitignore = store_dir / ".gitignore"
+    if not gitignore.exists():
+        gitignore.write_text(HEDDLE_GITIGNORE_CONTENTS, encoding="utf-8")
 
 
 class HeddleStore:
@@ -93,6 +112,7 @@ class HeddleStore:
     @classmethod
     def open(cls, path: Path) -> HeddleStore:
         path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_store_gitignore(path.parent)
         conn = sqlite3.connect(path)
         conn.row_factory = sqlite3.Row
         conn.executescript(SCHEMA)

@@ -5,7 +5,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from heddle import commands
+from heddle import __version__, commands
+from heddle.errors import HeddleError
 
 CORE_OUTPUT_SCHEMA = {
     "type": "object",
@@ -19,6 +20,8 @@ CORE_OUTPUT_SCHEMA = {
     "required": ["schema", "ok", "data", "warnings", "meta"],
     "additionalProperties": True,
 }
+
+SUPPORTED_PROTOCOL_VERSIONS = ("2024-11-05", "2025-03-26")
 
 TOOLS = [
     {
@@ -123,7 +126,7 @@ def _mcp_payload(name: str, result: dict[str, Any]) -> dict[str, Any]:
         "ok": True,
         "data": result,
         "warnings": _warnings_for_result(result),
-        "meta": {"producer": {"tool": "heddle", "version": "0.1.0"}},
+        "meta": {"producer": {"tool": "heddle", "version": __version__}},
     }
 
 
@@ -132,6 +135,7 @@ def _tool_result(id_value: Any, name: str, result: dict[str, Any]) -> dict[str, 
         "jsonrpc": "2.0",
         "id": id_value,
         "result": {
+            "structuredContent": _mcp_payload(name, result),
             "content": [
                 {"type": "text", "text": json.dumps(_mcp_payload(name, result), sort_keys=True)}
             ]
@@ -139,11 +143,50 @@ def _tool_result(id_value: Any, name: str, result: dict[str, Any]) -> dict[str, 
     }
 
 
-def _error(id_value: Any, code: int, message: str, details: Any | None = None) -> dict[str, Any]:
+def _error(id_value: Any, code: int, message: str, data: Any | None = None) -> dict[str, Any]:
     error: dict[str, Any] = {"code": code, "message": message}
-    if details is not None:
-        error["details"] = details
+    if data is not None:
+        error["data"] = data
     return {"jsonrpc": "2.0", "id": id_value, "error": error}
+
+
+def _invalid_params_data(reason: str, rejected_field: str | None = None) -> dict[str, Any]:
+    data: dict[str, Any] = {
+        "schema": "heddle.error.v1",
+        "error_code": "invalid_params",
+        "retryability": "retry_with_changes",
+        "hint": "Correct the request arguments and retry the same tool.",
+        "reason": reason,
+    }
+    if rejected_field is not None:
+        data["rejected_field"] = rejected_field
+    return data
+
+
+def _internal_error_data(exc: Exception) -> dict[str, Any]:
+    return {
+        "schema": "heddle.error.v1",
+        "error_code": "internal_error",
+        "retryability": "fatal",
+        "hint": "Inspect server logs before retrying; this is a Heddle defect.",
+        "exception_type": type(exc).__name__,
+    }
+
+
+def _initialize_result(params: dict[str, Any]) -> dict[str, Any]:
+    requested = params.get("protocolVersion")
+    protocol = (
+        requested if requested in SUPPORTED_PROTOCOL_VERSIONS else SUPPORTED_PROTOCOL_VERSIONS[-1]
+    )
+    return {
+        "protocolVersion": protocol,
+        "serverInfo": {"name": "heddle", "version": __version__},
+        "capabilities": {"tools": {}},
+        "instructions": (
+            "Use tools/list, then tools/call. Tool errors are structured in "
+            "JSON-RPC error.data with schema heddle.error.v1."
+        ),
+    }
 
 
 def _args(params: dict[str, Any]) -> dict[str, Any]:
@@ -197,16 +240,30 @@ def _depth_arg(args: dict[str, Any]) -> int:
 
 
 def dispatch(request: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(request, dict):
+        return _error(
+            None,
+            -32600,
+            "invalid request",
+            _invalid_params_data("request must be an object"),
+        )
     method = request.get("method")
     id_value = request.get("id")
+    params = request.get("params") or {}
+    if not isinstance(params, dict):
+        return _error(
+            id_value,
+            -32602,
+            "invalid params",
+            _invalid_params_data("params must be an object", "params"),
+        )
     if method == "initialize":
-        return {"jsonrpc": "2.0", "id": id_value, "result": {"capabilities": {"tools": {}}}}
+        return {"jsonrpc": "2.0", "id": id_value, "result": _initialize_result(params)}
     if method == "tools/list":
         return {"jsonrpc": "2.0", "id": id_value, "result": {"tools": TOOLS}}
     if method != "tools/call":
-        return _error(id_value, -32601, str(method))
+        return _error(id_value, -32601, str(method), _invalid_params_data("unknown method"))
 
-    params = request.get("params") or {}
     name = params.get("name")
     try:
         args = _args(params)
@@ -255,9 +312,18 @@ def dispatch(request: dict[str, Any]) -> dict[str, Any]:
                     or "loomweave",
                 ),
             )
+    except HeddleError as exc:
+        return _error(
+            id_value,
+            -32602,
+            "invalid params",
+            exc.to_error_data() | {"reason": str(exc)},
+        )
     except ValueError as exc:
-        return _error(id_value, -32602, "invalid params", {"reason": str(exc)})
-    return _error(id_value, -32601, str(name))
+        return _error(id_value, -32602, "invalid params", _invalid_params_data(str(exc)))
+    except Exception as exc:
+        return _error(id_value, -32603, "internal error", _internal_error_data(exc))
+    return _error(id_value, -32601, str(name), _invalid_params_data("unknown tool", "name"))
 
 
 def main() -> int:

@@ -45,9 +45,9 @@ def test_mcp_product_design_treats_agent_surface_as_primary() -> None:
 def test_product_metrics_are_falsifiable_and_guard_federation_boundaries() -> None:
     text = read_product_doc("metrics.md")
     assert "Target (falsifiable)" in text
-    assert "8 of 10 dogfood diffs" in text
-    assert "solo parity" in text
-    assert "federation uplift" in text
+    assert "real member repo" in text
+    assert "git diff --name-only" in text
+    assert "real Loomweave uplift" in text
     assert "Member repo diff violations" in text
     assert "0" in text
 
@@ -55,5 +55,5 @@ def test_product_metrics_are_falsifiable_and_guard_federation_boundaries() -> No
 def test_prd_contains_reject_branches_for_mcp_productization() -> None:
     text = read_product_doc("prds/PRD-0001-agent-first-mcp-productization.md")
     assert "Reject branch" in text
-    assert "If an agent must inspect raw SQLite or manually grep" in text
+    assert "If the real-member lane requires raw SQLite inspection" in text
     assert "ready-for-planning" in text

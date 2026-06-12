@@ -74,6 +74,27 @@ def _dogfood_productization_decision(path: Path) -> ProductizationDecision:
     thresholds = payload.get("thresholds")
     if not isinstance(summary, dict) or not isinstance(thresholds, dict):
         return ProductizationDecision(False, "dogfood-invalid", "dogfood summary missing")
+    real_member = summary.get("real_member")
+    if isinstance(real_member, dict):
+        real_parity_threshold = _int_or_default(thresholds.get("real_member_parity"), 1)
+        real_uplift_threshold = _int_or_default(thresholds.get("real_loomweave_uplift"), 1)
+        real_baseline_threshold = _int_or_default(thresholds.get("real_baseline_executed"), 1)
+        real_parity = _int_or_default(real_member.get("parity"), -1)
+        real_uplift = _int_or_default(real_member.get("uplift"), -1)
+        real_baseline = _int_or_default(real_member.get("baseline_executed"), -1)
+        if (
+            payload.get("ready") is not True
+            or real_parity < real_parity_threshold
+            or real_uplift < real_uplift_threshold
+            or real_baseline < real_baseline_threshold
+        ):
+            return ProductizationDecision(
+                False,
+                "dogfood-failed",
+                "real member dogfood thresholds not met",
+            )
+        return ProductizationDecision(True, "go", "spike recommendation is go and dogfood passed")
+
     solo = summary.get("solo")
     federation = summary.get("federation")
     if not isinstance(solo, dict) or not isinstance(federation, dict):

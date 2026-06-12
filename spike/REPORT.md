@@ -9,14 +9,19 @@ earlier bounded spike alone.
 
 Live-review blockers retired in this repo:
 
-- Standalone parity: `dogfood-eval` proves 10/10 solo cases through MCP
-  `changed -> reverify` in 2 tool calls or fewer.
-- Federation uplift: Heddle-side implementation plus pre-admission draft specs
-  prove 10/10 seeded federation cases with enriched reverify output. No sibling
-  repo patches are required before owner admission.
-- MCP and federation-bar defects: malformed MCP input degrades recoverably,
-  tools advertise output schemas, default state is `.weft/heddle/`, and
-  hostile/undecodable files degrade per file rather than killing the run.
+- Standalone parity: `dogfood-eval` now requires a real-member benchmark
+  against Lacuna, with an executed `git diff --name-only` plus `rg` baseline.
+  The current run matched changed paths through MCP and produced a non-empty
+  `reverify` worklist.
+- Federation uplift: the real-member lane captures a dated snapshot through
+  actual Loomweave MCP before `changed -> reverify`; the current run captured
+  522 Loomweave edges and returned 4 reverify work items. Seeded federation
+  cases remain smoke coverage only.
+- MCP and federation-bar defects: malformed MCP input and tool exceptions
+  degrade recoverably, `initialize` returns protocol/server metadata, tools
+  advertise output schemas, default state is `.weft/heddle/`, the store writes
+  a nested `.gitignore`, and hostile/undecodable files degrade per file rather
+  than killing the run.
 
 ## Q1: Loomweave Read Path
 
@@ -69,7 +74,15 @@ The planted-change query returned `python:function:planted.py::planted` for `HEA
 
 ## Q4: Grep-Test Dogfood Notes
 
-The bounded spike path is already more agent-friendly than manual grep for the planted corpus: `heddle changed --rev-range HEAD~1..HEAD --json` returns structured entity-level change facts with actor, commit, locator, path, and enrichment state. Full live-member historical backfill is not yet acceptable as a release-gate operation and must remain outside the fast harness until incremental or bounded ingestion is implemented.
+The release dogfood path now runs a real-member benchmark instead of relying on
+the planted corpus for parity. It clones `/home/john/lacuna`, copies the live
+Loomweave index, backfills Heddle, runs MCP `capture_snapshot`, selects a
+historical code change with non-empty reverify output, executes the baseline
+`git diff --name-only` plus `rg` workflow, then compares MCP `changed ->
+reverify` output against that baseline. The current benchmark uses
+`dd7c0ff3d30a4786945d3fff851f7f175f2826ee^..dd7c0ff3d30a4786945d3fff851f7f175f2826ee`,
+matches `.gitignore`, `Makefile`, `tests/test_steps.py`, and `tour/steps.py`,
+captures 522 Loomweave edges, and returns 4 reverify items.
 
 Historical bounded-spike recommendation: go
 

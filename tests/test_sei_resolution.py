@@ -2,22 +2,24 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heddle.loomweave import resolve_sei_for_locator
+from heddle.loomweave import loomweave_entity_id_candidates, resolve_sei_for_locator
 from heddle.store import HeddleStore
 
 
 class FakeClient:
     def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
         assert name == "entity_resolve"
-        assert arguments == {"qualnames": ["python:function:pkg.mod::fn"]}
+        assert arguments == {
+            "qualnames": ["python:function:pkg.mod.fn", "python:function:pkg/mod.py::fn"]
+        }
         return {
             "results": [
                 {
-                    "qualname": "python:function:pkg.mod::fn",
+                    "qualname": "python:function:pkg.mod.fn",
                     "result_kind": "resolved",
                     "candidates": [
                         {
-                            "id": "python:function:pkg.mod::fn",
+                            "id": "python:function:pkg.mod.fn",
                             "sei": "loomweave:eid:opaque-value",
                         }
                     ],
@@ -28,9 +30,16 @@ class FakeClient:
 
 def test_resolve_sei_for_locator_returns_opaque_value() -> None:
     assert (
-        resolve_sei_for_locator(FakeClient(), "python:function:pkg.mod::fn")
+        resolve_sei_for_locator(FakeClient(), "python:function:pkg/mod.py::fn")
         == "loomweave:eid:opaque-value"
     )
+
+
+def test_loomweave_entity_id_candidates_translate_python_locators() -> None:
+    assert loomweave_entity_id_candidates("python:function:pkg/mod.py::Class.fn") == [
+        "python:function:pkg.mod.Class.fn",
+        "python:function:pkg/mod.py::Class.fn",
+    ]
 
 
 def test_resolve_sei_for_locator_degrades_when_absent() -> None:

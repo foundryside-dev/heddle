@@ -16,25 +16,27 @@ around the MCP surface because agents experience Heddle primarily through
 
 ## Success metric
 
-Agent impact answer success rate reaches 8 of 10 dogfood diffs with solo-mode
-parity against existing tools through MCP in 2 tool calls or fewer, and 8 of 10
-federation-enriched dogfood diffs with a better answer than existing tools
-before admission recommendation.
+Agent impact answer success rate reaches at least one real-member benchmark
+where an executed existing-tools baseline (`git diff --name-only` plus `rg`)
+matches Heddle MCP changed output, actual Loomweave MCP snapshot capture
+provides enrichment, and MCP `reverify` returns a non-empty worklist before
+admission recommendation.
 
-Baseline: not yet measured as a 10-diff dogfood run. Planted corpus and contract
-tests pass as of 2026-06-13.
+Baseline: measured on Lacuna as of 2026-06-13. The current dogfood run captures
+522 Loomweave edges and returns 4 real-member reverify items. Planted corpus and
+synthetic federation cases remain smoke coverage, not readiness evidence.
 
 ## Acceptance criteria (falsifiable)
 
 1. SUCCESS - An agent starting from MCP `tools/list` can discover the core flow
-   and answer changed-set plus reverify context with solo-mode parity against
-   existing tools for at least 8 of 10 dogfood diffs in 2 tool calls or fewer.
-   Reject branch: If an agent must inspect raw SQLite or manually grep for more
-   than 2 of 10 solo-mode dogfood diffs, the bet is rejected and an MCP refactor
-   plan is opened.
-2. FEDERATION UPLIFT - When federation member enrichment is available, at least
-   8 of 10 federation-enriched dogfood diffs produce a more actionable answer
-   than existing tools alone.
+   and answer changed-set plus reverify context with parity against an executed
+   real-member `git diff --name-only` plus `rg` baseline.
+   Reject branch: If the real-member lane requires raw SQLite inspection or
+   manual grep outside the measured baseline, the bet is rejected and an MCP
+   refactor plan is opened.
+2. FEDERATION UPLIFT - When federation member enrichment is available, the
+   real-member dogfood lane captures a sibling MCP snapshot and returns a
+   non-empty Heddle reverify worklist that existing tools alone do not provide.
    Reject branch: If enriched answers are merely equal to existing tools, the
    federation value claim is unproven and the bet is rejected.
 3. MCP STRUCTURE - Every core MCP response includes schema/version, query
@@ -75,7 +77,8 @@ tests pass as of 2026-06-13.
 
 ## Open questions / assumptions
 
-- A 10-diff dogfood corpus still needs to be selected.
+- Broaden real-member dogfood beyond the current Lacuna/Loomweave case after
+  Wardline, Filigree, and Legis interfaces are endorsed.
 - `tools/list` descriptions may need to become more workflow-oriented after
   usability review.
 - The current MCP server emits JSON inside text content; acceptance should

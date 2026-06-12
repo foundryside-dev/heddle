@@ -109,13 +109,15 @@ class LoomweaveMcpClient:
 
 
 def resolve_sei_for_locator(client: ToolClient, locator: str) -> str | None:
+    candidates = loomweave_entity_id_candidates(locator)
     try:
-        payload = client.call_tool("entity_resolve", {"qualnames": [locator]})
+        payload = client.call_tool("entity_resolve", {"qualnames": candidates})
     except Exception:
         return None
-    sei = _sei_from_resolve_results(payload, locator)
-    if sei is not None:
-        return sei
+    for candidate in candidates:
+        sei = _sei_from_resolve_results(payload, candidate)
+        if sei is not None:
+            return sei
     entity = payload.get("entity") if isinstance(payload, dict) else None
     if not isinstance(entity, dict):
         return None
@@ -148,3 +150,26 @@ def _sei_from_resolve_results(payload: dict[str, object], locator: str) -> str |
             if isinstance(sei, str) and sei:
                 return sei
     return None
+
+
+def loomweave_entity_id_candidates(locator: str) -> list[str]:
+    """Return likely Loomweave ids for a local Heddle locator."""
+
+    candidates: list[str] = []
+    if locator.startswith(("python:function:", "python:class:")) and "::" in locator:
+        namespace, kind, body = locator.split(":", 2)
+        kind_prefix = f"{namespace}:{kind}"
+        path, qualname = body.split("::", 1)
+        if path.endswith(".py"):
+            module = path[:-3].replace("/", ".")
+            candidates.append(f"{kind_prefix}:{module}.{qualname}")
+    elif locator.startswith("file:") and locator.endswith(".py"):
+        path = locator.removeprefix("file:")
+        module = path[:-3].replace("/", ".")
+        candidates.append(f"python:module:{module}")
+    candidates.append(locator)
+    deduped: list[str] = []
+    for candidate in candidates:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return deduped

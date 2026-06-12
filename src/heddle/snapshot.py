@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any, Protocol
 
+from heddle.loomweave import loomweave_entity_id_candidates
 from heddle.store import HeddleStore
 
 
@@ -67,12 +68,16 @@ def capture_edge_snapshot(
             "enrichment": {"edges": "skipped"},
         }
 
-    locator_to_id: dict[str, int] = {}
+    entity_id_to_key_id: dict[str, int] = {}
+    query_entities: list[tuple[str, str]] = []
     for row in store.list_entity_keys(repo):
         locator = row.get("locator")
         key_id = row.get("id")
         if isinstance(locator, str) and isinstance(key_id, int):
-            locator_to_id[locator] = key_id
+            aliases = _entity_aliases(locator, row.get("sei"))
+            for alias in aliases:
+                entity_id_to_key_id[alias] = key_id
+            query_entities.append((locator, aliases[0]))
     snapshot_id = store.create_edge_snapshot(
         repo_id=repo_id,
         commit_sha=resolved_commit,
@@ -84,19 +89,19 @@ def capture_edge_snapshot(
 
     edge_count = 0
     failures: list[dict[str, str]] = []
-    for locator in sorted(locator_to_id):
+    for locator, query_entity in sorted(query_entities):
         try:
-            neighborhood = client.neighborhood(locator)
+            neighborhood = client.neighborhood(query_entity)
             edges = edges_from_neighborhood(neighborhood)
         except Exception as exc:
             failures.append({"locator": locator, "reason": str(exc)})
             continue
         for source, target, edge_kind in sorted(edges):
             source_id = _entity_key_id_for_locator(
-                store, repo_id, locator_to_id, source, resolved_commit
+                store, repo_id, entity_id_to_key_id, source, resolved_commit
             )
             target_id = _entity_key_id_for_locator(
-                store, repo_id, locator_to_id, target, resolved_commit
+                store, repo_id, entity_id_to_key_id, target, resolved_commit
             )
             store.append_snapshot_edge(
                 snapshot_id,
@@ -124,7 +129,7 @@ def capture_edge_snapshot(
         "source": "loomweave",
         "source_version": source_version,
         "completeness": completeness,
-        "entities": len(locator_to_id),
+        "entities": len(query_entities),
         "edges": edge_count,
         "failed_entities": failures,
         "enrichment": {"edges": "partial" if failures else "present"},
@@ -143,6 +148,17 @@ def _entity_key_id_for_locator(
     key_id = store.ensure_entity_key(repo_id, locator=locator, sei=None, commit_sha=commit_sha)
     locator_to_id[locator] = key_id
     return key_id
+
+
+def _entity_aliases(locator: str, sei: object) -> list[str]:
+    aliases = loomweave_entity_id_candidates(locator)
+    if isinstance(sei, str) and sei:
+        aliases.append(sei)
+    deduped: list[str] = []
+    for alias in aliases:
+        if alias not in deduped:
+            deduped.append(alias)
+    return deduped
 
 
 def _entity_id(row: dict[str, Any]) -> str | None:

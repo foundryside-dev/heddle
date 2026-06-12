@@ -507,7 +507,7 @@ enrich-only.
 | Wardline + Heddle | Finding/risk facts, suppression state, taint/trust-boundary context | `heddle.affected_scope.v1` for scoped scan hints | If Wardline is absent, Heddle says `risk=unavailable`; it never treats absence as clean. |
 | Legis + Heddle | `git_rename_list` / rename feed, branch/commit/PR/governance context | `heddle.preflight_impact.v1` advisory affected-set facts | If Legis is absent, Heddle uses raw git history and marks governance enrichment unavailable. |
 | Charter + Heddle | Requirement links, verification freshness, baseline exposure | `heddle.obligation_impact_context.v1` advisory impacted obligations | If Charter is absent, Heddle omits requirement enrichment and never emits readiness verdicts. |
-| Lacuna + Heddle | Seeded demo changes and expected tour cases | Dogfood/demo results only | If Lacuna changes, synthetic dogfood remains the release gate. |
+| Lacuna + Heddle | Seeded demo changes, real-member parity benchmark, and tour cases | Dogfood/demo results only | If Lacuna drifts, dogfood must either find another real code-change worklist or fail ready; synthetic cases are smoke coverage only. |
 
 Proposed payload names:
 
@@ -564,7 +564,8 @@ Loomweave-side changes after admission:
   clearly marked dated and advisory.
 
 Priority: P1. This is the most natural first federation uplift because Heddle's
-dogfood federation lane already proves the dated-edge model.
+real-member dogfood lane now proves dated-edge capture through actual Loomweave
+MCP.
 
 ### Filigree
 
@@ -692,10 +693,11 @@ recommendation.
 
 Heddle-side changes:
 
-- Add Lacuna scenarios to `dogfood-eval` after the synthetic corpus remains
-  stable.
-- Keep synthetic dogfood as the release gate, because demo drift should not
-  block core product validation.
+- Keep Lacuna in `dogfood-eval` as the real-member readiness lane: executed
+  baseline, actual Loomweave snapshot capture, and non-empty MCP reverify
+  output.
+- Keep synthetic cases as smoke coverage for the Heddle-owned graph contract;
+  they must not be the release gate by themselves.
 
 Lacuna-side changes after admission:
 
@@ -949,13 +951,16 @@ Acceptance:
 
 Priority: P2.
 
-Extend dogfood with Lacuna scenarios after the MCP contract refactor lands.
+Extend dogfood beyond the current Lacuna/Loomweave lane after the MCP contract
+refactor lands.
 
 Acceptance:
 
-- Synthetic dogfood remains the release gate.
-- Lacuna dogfood demonstrates at least one pairwise Heddle uplift story for
-  Loomweave, Wardline, Filigree, and Legis.
+- The release gate keeps at least one real-member benchmark with executed
+  baseline, actual sibling MCP integration, and non-empty Heddle reverify
+  output.
+- Additional Lacuna dogfood demonstrates pairwise Heddle uplift stories for
+  Wardline, Filigree, and Legis after those interfaces are endorsed.
 
 ## Bottom Line
 

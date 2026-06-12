@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from heddle.errors import BadRevisionError
 from heddle.loomweave import LoomweaveMcpClient, LoomweaveProbe
 from heddle.propagation import blast_radius as compute_blast_radius
 from heddle.reverify import render_reverify_worklist
@@ -14,13 +15,17 @@ from heddle.store import HeddleStore, default_store_path
 def _rev_range_commits(repo: Path, rev_range: str | None) -> set[str] | None:
     if rev_range is None:
         return None
-    proc = subprocess.run(
-        ["git", "rev-list", rev_range],
-        cwd=repo,
-        check=True,
-        text=True,
-        capture_output=True,
-    )
+    try:
+        proc = subprocess.run(
+            ["git", "rev-list", rev_range],
+            cwd=repo,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+        raise BadRevisionError(f"invalid rev_range {rev_range!r}: {detail}") from exc
     return {line for line in proc.stdout.splitlines() if line}
 
 

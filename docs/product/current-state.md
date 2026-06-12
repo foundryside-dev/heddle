@@ -11,8 +11,9 @@ tools in solo mode and better with federation member enrichment.
 ## In flight
 
 - Agent-first MCP productization - status: **product-candidate ready**. The
-  dogfood evaluator proves 10/10 solo parity through MCP in 2 tool calls or
-  fewer.
+  dogfood evaluator now gates readiness on a real Lacuna benchmark: executed
+  `git diff --name-only` plus `rg` baseline, MCP `capture_snapshot`, MCP
+  `changed`, and MCP `reverify` with a non-empty worklist.
 - MCP-first federation polish - status: **analysis complete, not implemented**.
   See
   [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md)
@@ -21,8 +22,8 @@ tools in solo mode and better with federation member enrichment.
   codes.
 - Federation admission readiness - status: Heddle-owned contracts and consumer
   ticket package exist as pre-admission drafts; Heddle-side federation uplift is
-  implemented and proven in the seeded dogfood lane. Sibling-side tickets remain
-  post-admission work.
+  implemented and proven against actual Loomweave MCP on Lacuna. Sibling-side
+  tickets remain post-admission work.
 - Product continuity - status: `docs/product/` created; future sessions should
   RESUME here before reinterpreting the design.
 
@@ -59,8 +60,10 @@ tools in solo mode and better with federation member enrichment.
   dated Loomweave edge snapshot capture into local Heddle state.
 - Added optional Loomweave-backed SEI resolution for `backfill` and
   `ingest-commit`, with clean degradation when Loomweave is unavailable.
-- Added `dogfood-eval`, producing `/tmp/heddle-dogfood-results.json`; current
-  run proves 10/10 solo parity and 10/10 federation uplift.
+- Tightened `dogfood-eval`, producing `/tmp/heddle-dogfood-results.json`;
+  current run proves 1/1 real-member baseline parity, 1/1 real Loomweave uplift
+  with 522 captured edges and 4 reverify items, plus 10/10 seeded federation
+  smoke cases.
 - Added the federation value-add and MCP-first audit that maps pairwise value
   against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
   Shuttle/Codeweave-style execution member.

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from heddle import __version__, commands
-from heddle.dogfood import DEFAULT_DOGFOOD_RESULTS, run_dogfood_evaluator
+from heddle.dogfood import DEFAULT_DOGFOOD_RESULTS, REAL_MEMBER_REPO, run_dogfood_evaluator
 from heddle.git import backfill, ingest_commit
 from heddle.install import install_hook
 from heddle.loomweave import LoomweaveMcpClient, LoomweaveProbe, ToolClient
@@ -95,6 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     dogfood_parser = sub.add_parser("dogfood-eval")
     dogfood_parser.add_argument("--output", type=Path, default=DEFAULT_DOGFOOD_RESULTS)
     dogfood_parser.add_argument("--work-dir", type=Path)
+    dogfood_parser.add_argument("--skip-real-member", action="store_true")
     dogfood_parser.add_argument("--json", action="store_true")
 
     productization_parser = sub.add_parser("productization-gate")
@@ -172,7 +173,12 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0
     if args.command == "dogfood-eval":
-        payload = run_dogfood_evaluator(output_path=args.output, work_dir=args.work_dir)
+        payload = run_dogfood_evaluator(
+            output_path=args.output,
+            work_dir=args.work_dir,
+            real_member_repo=None if args.skip_real_member else REAL_MEMBER_REPO,
+            require_real_member=not args.skip_real_member,
+        )
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0 if payload["ready"] else 2
     if args.command == "productization-gate":
