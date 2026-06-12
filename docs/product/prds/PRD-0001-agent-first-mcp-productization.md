@@ -62,7 +62,7 @@ tests pass as of 2026-06-13.
 
 - Heddle must remain local-first and read-only against analyzed repos.
 - Missing sibling data must degrade honestly and explicitly.
-- MCP deficiencies are product defects; they are not documentation polish.
+- MCP deficiencies are P0 product defects; they are not documentation polish.
 - A broken Heddle hook must never block a commit.
 - Heddle-owned draft contracts remain non-normative until owner admission and
   glossary clearance.

@@ -30,7 +30,7 @@ federation candidate without crossing the owner-reserved admission boundary.
 - Promoted Heddle from spike-only prose to product-candidate ownership posture.
 - Recorded PDR-0001 and PRD-0001.
 - Added falsifiable metrics and guardrails for agentic MCP usability.
-- Made MCP deficiencies explicit P1 product defects, not polish.
+- Made MCP deficiencies explicit P0 product defects, not polish.
 
 ## Next session, start here
 

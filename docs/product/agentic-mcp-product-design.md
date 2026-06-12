@@ -7,9 +7,9 @@ agentic MCP product. That means an agent can discover the product, understand
 authority boundaries, ask the core questions, and act on the result without
 reading source code, raw SQLite, or sibling-specific tribal knowledge.
 
-MCP deficiencies are P1 product defects. They are not minor polish. If the MCP
-surface is harder to use than manual grep, the product has failed its primary
-workflow and the right response is refactor, not workaround.
+MCP deficiencies are P0 product defects. They are not minor polish. If the MCP
+surface is harder to use than manual grep, Heddle has no reason to exist. The
+right response is refactor, not workaround.
 
 ## Agent job
 
@@ -72,7 +72,7 @@ Heddle can be argued as a first-class Weft federation member only when:
 Until then, Heddle is a product candidate with a `go` spike recommendation, not
 an admitted member.
 
-## P1 MCP deficiency examples
+## P0 MCP deficiency examples
 
 - A core query can only be answered through CLI, not MCP.
 - `tools/list` leaves an agent unable to infer the next call.

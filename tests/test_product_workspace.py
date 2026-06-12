@@ -33,7 +33,8 @@ def test_vision_names_heddle_federation_authority_and_refusals() -> None:
 
 def test_mcp_product_design_treats_agent_surface_as_primary() -> None:
     text = read_product_doc("agentic-mcp-product-design.md")
-    assert "MCP deficiencies are P1 product defects" in text
+    assert "MCP deficiencies are P0 product defects" in text
+    assert "Heddle has no reason to exist" in text
     assert "tools/list is the front door" in text
     assert "manual grep" in text
     assert "first-class Weft federation member" in text
