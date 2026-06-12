@@ -192,6 +192,19 @@ class HeddleStore:
         self.conn.commit()
         return int(row["id"])
 
+    def list_entity_keys(self, repo: Path) -> list[dict[str, object]]:
+        repo_id = self._repo_id(repo)
+        rows = self.conn.execute(
+            """
+            SELECT id, locator, sei, first_seen_commit, last_seen_commit
+              FROM entity_keys
+             WHERE repo_id = ?
+             ORDER BY id
+            """,
+            (repo_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def append_change_event(
         self,
         *,

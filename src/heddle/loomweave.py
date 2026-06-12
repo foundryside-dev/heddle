@@ -5,7 +5,12 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
+
+
+class ToolClient(Protocol):
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        ...
 
 
 @dataclass(frozen=True)
@@ -98,3 +103,15 @@ class LoomweaveMcpClient:
 
     def neighborhood(self, entity: str) -> dict[str, Any]:
         return self.call_tool("entity_neighborhood_get", {"id": entity, "limit": 100})
+
+
+def resolve_sei_for_locator(client: ToolClient, locator: str) -> str | None:
+    try:
+        payload = client.call_tool("entity_resolve", {"id": locator})
+    except Exception:
+        return None
+    entity = payload.get("entity") if isinstance(payload, dict) else None
+    if not isinstance(entity, dict):
+        return None
+    sei = entity.get("sei")
+    return sei if isinstance(sei, str) and sei else None
