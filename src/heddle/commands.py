@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from heddle.propagation import blast_radius as compute_blast_radius
+from heddle.reverify import render_reverify_worklist
 from heddle.store import HeddleStore, default_store_path
 
 
@@ -53,3 +54,12 @@ def blast_radius(
             "query": "blast_radius",
             **compute_blast_radius(store, repo, changed_entity_key_ids, depth),
         }
+
+
+def reverify(repo: Path, changed_entity_key_ids: list[int], depth: int = 2) -> dict[str, Any]:
+    result = blast_radius(repo, changed_entity_key_ids, depth)
+    return {
+        "heddle_schema_version": result["heddle_schema_version"],
+        "query": "reverify",
+        **render_reverify_worklist(result),
+    }

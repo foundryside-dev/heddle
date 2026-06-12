@@ -44,6 +44,20 @@ TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "reverify",
+        "description": "Render an agent-first re-verification worklist from blast-radius output.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "changed_entity_key_ids": {"type": "array", "items": {"type": "integer"}},
+                "depth": {"type": "integer", "minimum": 0, "maximum": 5},
+            },
+            "required": ["repo", "changed_entity_key_ids"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -76,6 +90,15 @@ def dispatch(request: dict[str, Any]) -> dict[str, Any]:
         return _tool_result(
             id_value,
             commands.blast_radius(
+                Path(args["repo"]),
+                [int(value) for value in args["changed_entity_key_ids"]],
+                int(args.get("depth", 2)),
+            ),
+        )
+    if name == "reverify":
+        return _tool_result(
+            id_value,
+            commands.reverify(
                 Path(args["repo"]),
                 [int(value) for value in args["changed_entity_key_ids"]],
                 int(args.get("depth", 2)),

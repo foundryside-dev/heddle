@@ -6,7 +6,7 @@ from heddle.mcp import dispatch
 def test_tools_list_contains_changed_and_timeline() -> None:
     response = dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert {"changed", "timeline", "blast_radius"} <= names
+    assert {"changed", "timeline", "blast_radius", "reverify"} <= names
 
 
 def test_unknown_tool_is_structured_error() -> None:

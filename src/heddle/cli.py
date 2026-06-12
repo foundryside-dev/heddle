@@ -42,6 +42,23 @@ def build_parser() -> argparse.ArgumentParser:
     timeline_parser.add_argument("--entity", required=True)
     timeline_parser.add_argument("--json", action="store_true")
 
+    blast_parser = sub.add_parser("blast-radius")
+    blast_parser.add_argument("--repo", type=Path, default=Path("."))
+    blast_parser.add_argument("--changed-entity-key-id", type=int, action="append", required=True)
+    blast_parser.add_argument("--depth", type=int, default=2)
+    blast_parser.add_argument("--json", action="store_true")
+
+    reverify_parser = sub.add_parser("reverify")
+    reverify_parser.add_argument("--repo", type=Path, default=Path("."))
+    reverify_parser.add_argument(
+        "--changed-entity-key-id",
+        type=int,
+        action="append",
+        required=True,
+    )
+    reverify_parser.add_argument("--depth", type=int, default=2)
+    reverify_parser.add_argument("--json", action="store_true")
+
     return parser
 
 
@@ -78,6 +95,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "timeline":
         payload = commands.timeline(args.repo, args.entity)
+        print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
+        return 0
+    if args.command == "blast-radius":
+        payload = commands.blast_radius(args.repo, args.changed_entity_key_id, args.depth)
+        print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
+        return 0
+    if args.command == "reverify":
+        payload = commands.reverify(args.repo, args.changed_entity_key_id, args.depth)
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0
     parser.print_help()
