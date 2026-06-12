@@ -1,6 +1,6 @@
 # Current State - Heddle
 
-Checkpoint: 2026-06-13 - `main` after dogfood readiness gate
+Checkpoint: 2026-06-13 - `main` after MCP smoke and dogfood readiness gates
 
 ## The bet right now
 
@@ -21,7 +21,8 @@ tools in solo mode and better with federation member enrichment.
   for the remaining P1 surface gaps: namespaced aliases, specific output
   schemas, filters/sort/pagination, and broader recoverable error taxonomy.
   Live `tools/list` now includes mutability/idempotency metadata, and
-  `heddle mcp-smoke` provides an operator-grade stdio check.
+  `heddle mcp-smoke` proves initialize, tool inventory, structured tool-error
+  recovery, and post-error survivability over real stdio.
 - Federation admission readiness - status: Heddle-owned contracts and consumer
   ticket package exist as pre-admission drafts; Heddle-side federation uplift is
   implemented and proven against actual Loomweave MCP on Lacuna. Sibling-side
@@ -70,6 +71,9 @@ tools in solo mode and better with federation member enrichment.
   status, idempotency, touched paths, and federation dependencies; configurable
   `dogfood-eval --real-member-repo`; and `heddle mcp-smoke` for a real stdio
   initialize/tools/list/tool-error survivability check.
+- Refreshed README and evidence docs so the agent-facing entry point documents
+  the shipped MCP workflow, verification gates, and remaining P1 contract
+  refactor.
 - Added the federation value-add and MCP-first audit that maps pairwise value
   against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
   Shuttle/Codeweave-style execution member.

@@ -881,12 +881,14 @@ filters, sort, group_by, limit, cursor, include_federation=true)`.
 #### `capture_snapshot`
 
 Current strength: it is local-only, never mutates sibling repos, and degrades to
-`SKIPPED` when Loomweave is unavailable.
+`SKIPPED` when Loomweave is unavailable. Live `tools/list` now advertises that
+the tool is not read-only, writes only local Heddle state, depends on
+Loomweave, and uses a single-writer concurrency posture.
 
 MCP gaps:
 
-- P1: mutating local state without a visible idempotency and concurrency
-  contract in live `tools/list`.
+- P1: the idempotency contract is advertised but not yet enforced with
+  `idempotency_key`, `dry_run`, `force`, or "already current" result semantics.
 - P1: `loomweave_command` is an agent-supplied string. Prefer server/project
   configuration or a constrained capability choice; arbitrary command path
   selection is unnecessary agent burden.

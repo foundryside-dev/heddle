@@ -56,4 +56,5 @@ def test_prd_contains_reject_branches_for_mcp_productization() -> None:
     text = read_product_doc("prds/PRD-0001-agent-first-mcp-productization.md")
     assert "Reject branch" in text
     assert "If the real-member lane requires raw SQLite inspection" in text
-    assert "ready-for-planning" in text
+    assert "implemented-for-product-candidate" in text
+    assert "P1 contract refactor remains" in text

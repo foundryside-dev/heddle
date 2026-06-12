@@ -3,7 +3,7 @@
 Command:
 
 ```bash
-uv run heddle dogfood-eval --output /tmp/heddle-dogfood-results.json --json
+uv run heddle dogfood-eval --real-member-repo /home/john/lacuna --output /tmp/heddle-dogfood-results.json --json
 ```
 
 Result:

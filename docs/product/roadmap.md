@@ -13,13 +13,15 @@ Do not compute WSJF here; hand the committed bet over for sequencing.
   owner's call.
 - **Evidence freshness** - keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Heddle evolves.
+- **MCP operator documentation** - keep README and evidence docs aligned with
+  the shipped MCP workflow, smoke command, and remaining P1 contract gaps.
 
 ## Next (shaped, decreasing certainty)
 
-- **MCP contract refactor** - add namespaced aliases, `structuredContent`,
-  specific output schemas, list filters/sort/pagination, recoverable error
-  codes, and resource contracts before glossary freeze. Live
-  mutability/idempotency metadata is already present in `tools/list`.
+- **MCP contract refactor** - add namespaced aliases, specific output schemas,
+  list filters/sort/pagination, broader recoverable error taxonomy, and
+  resource contracts before glossary freeze. `structuredContent` and live
+  mutability/idempotency metadata are already present for current tools.
 - **Bounded live-repo ingestion strategy** - replace unbounded live-member
   backfill with explicit bounded, incremental, and resumable workflows.
 - **Post-admission consumer package** - turn Heddle-owned draft contracts into

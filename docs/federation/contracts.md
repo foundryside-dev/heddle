@@ -17,6 +17,17 @@ structure, requirements, work state, trust policy, or governance.
 - `capture_snapshot` - local dated edge snapshot capture from Loomweave's
   published read surface.
 
+These short names are current compatibility shims. The Heddle-owned proposed
+endorsed names are `heddle_change_list`, `heddle_entity_timeline_get`,
+`heddle_impact_radius_get`, `heddle_reverify_worklist_get`, and
+`heddle_edge_snapshot_capture`; see the Interface Endorsement Package in
+[`../product/federation-value-add-and-mcp-first-audit.md`](../product/federation-value-add-and-mcp-first-audit.md).
+
 All peer-facing behavior is local-only. `capture_snapshot` mutates Heddle's
 local `.weft/heddle/` state only; it never mutates sibling repos. Sibling
 absence returns explicit enrichment/completeness fields, not transport failure.
+
+`tools/list` currently advertises output schemas plus metadata for read-only
+status, local writes, idempotency, touched paths, concurrency, repo requirement,
+and federation dependencies. Specific output schemas, MCP resources, filters,
+sort controls, and pagination remain pre-admission contract-refactor work.

@@ -21,7 +21,8 @@ Live-review blockers retired in this repo:
   degrade recoverably, `initialize` returns protocol/server metadata, tools
   advertise output schemas, default state is `.weft/heddle/`, the store writes
   a nested `.gitignore`, and hostile/undecodable files degrade per file rather
-  than killing the run.
+  than killing the run. `heddle mcp-smoke` also proves a real stdio
+  initialize/tools/list/changed/bad-input/tools-list survivability path.
 
 ## Q1: Loomweave Read Path
 

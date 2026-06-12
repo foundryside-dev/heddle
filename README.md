@@ -46,18 +46,82 @@ hardening, a real-member dogfood evaluator, and an MCP stdio smoke command have
 landed. The current readiness verdict in [`spike/REPORT.md`](spike/REPORT.md)
 is `ready`; admission and sibling-side tickets remain owner-gated.
 
-Operator checks:
-
-```bash
-heddle mcp-smoke --repo . --json
-heddle dogfood-eval --real-member-repo /home/john/lacuna --json
-```
-
 Federation admission is still not claimed here. The current product decision is
 recorded in [`docs/product/decisions/0001-product-candidate-ownership.md`](docs/product/decisions/0001-product-candidate-ownership.md):
 Heddle may be developed and evaluated as a product candidate, while admission,
 wire freeze, glossary clearance, sibling tickets, and outward-facing release
 decisions remain owner-gated.
+
+## MCP-first quick start
+
+Run from this checkout with `uv run` during development:
+
+```bash
+uv run heddle --version
+uv run heddle mcp-smoke --repo . --json
+uv run heddle dogfood-eval --real-member-repo /home/john/lacuna --json
+```
+
+The smoke command starts a real stdio MCP server conversation, sends
+`initialize`, lists tools, calls `changed`, verifies a structured bad-input
+error, and proves the server still answers after the tool error. Treat a smoke
+failure as a product regression, not a docs problem.
+
+## Core workflow
+
+For a local repo:
+
+```bash
+uv run heddle init --repo .
+uv run heddle backfill --repo . --json
+uv run heddle changed --repo . --rev-range HEAD~1..HEAD --json
+uv run heddle capture-snapshot --repo . --json
+uv run heddle reverify --repo . --changed-entity-key-id 1 --json
+```
+
+For MCP hosts, the same product flow is:
+
+1. `tools/list`
+2. `changed`
+3. `reverify`
+4. `blast_radius` or `timeline` when the agent needs explanation
+5. `capture_snapshot` when edge enrichment is missing or stale
+
+`tools/list` advertises each tool's read/local-write behavior, idempotency,
+repo requirement, touched local paths, concurrency posture, and federation
+dependencies. Current tool names are compatibility shims; the proposed
+endorsement names and future contract shapes are in
+[`docs/product/federation-value-add-and-mcp-first-audit.md`](docs/product/federation-value-add-and-mcp-first-audit.md).
+
+| Tool | MCP role | Local state |
+| --- | --- | --- |
+| `changed` | List temporal change facts for a repo and rev range; returns ready-to-call reverify arguments. | Reads and may populate Heddle local state. |
+| `timeline` | Return ordered history for one entity locator or key. | Reads Heddle local state. |
+| `blast_radius` | Return downstream affected entities from dated snapshots. | Reads Heddle local state. |
+| `reverify` | Return the agent-facing worklist for what to reverify. | Reads Heddle local state. |
+| `capture_snapshot` | Capture dated Loomweave edges into Heddle state. | Writes only `.weft/heddle/`; never mutates sibling repos. |
+
+## Evidence gates
+
+Before calling the product candidate ready, run:
+
+```bash
+uv run ruff check .
+uv run mypy
+uv run pytest
+scripts/check_release_candidate.sh
+```
+
+`scripts/check_release_candidate.sh` runs the spike harness, dogfood evaluator,
+productization gate, static checks, tests, and member-diff guard. The current
+evidence records are:
+
+- [`spike/REPORT.md`](spike/REPORT.md) - readiness verdict and live-review
+  blocker closure.
+- [`docs/evidence/2026-06-13-dogfood-readiness.md`](docs/evidence/2026-06-13-dogfood-readiness.md)
+  - real-member baseline parity and Loomweave uplift.
+- [`docs/evidence/2026-06-13-mcp-smoke.md`](docs/evidence/2026-06-13-mcp-smoke.md)
+  - MCP initialize, tool inventory, structured error, and survivability check.
 
 ## Standing constraints (read before touching anything)
 

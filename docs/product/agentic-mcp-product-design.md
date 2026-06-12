@@ -32,11 +32,18 @@ The happy path is:
 and deeper review. The core flow must not require a user to know table names,
 store paths, snapshot internals, or Loomweave implementation details.
 
+Current shipped aliases are `changed`, `timeline`, `blast_radius`, `reverify`,
+and `capture_snapshot`. The proposed endorsed namespaced forms are documented in
+[`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md)
+and should be implemented before glossary freeze.
+
 ## MCP product rules
 
 - tools/list is the front door. Tool names, descriptions, schemas, and
   required fields must teach the workflow without a README.
 - Responses are structured product contracts, not CLI transcripts.
+- Tool inventory must advertise local-write behavior, idempotency, concurrency,
+  touched local paths, repo requirements, and federation dependencies.
 - Every response includes enough metadata to tell what repo, range/entity, and
   Heddle version produced the answer.
 - Every degraded response states the degradation explicitly: `NO_SNAPSHOT`,

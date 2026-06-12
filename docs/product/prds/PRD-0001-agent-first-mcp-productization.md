@@ -1,6 +1,6 @@
 # PRD-0001 - Agent-First MCP Productization
 
-Status: ready-for-planning
+Status: implemented-for-product-candidate; P1 contract refactor remains
 Decision: PDR-0001
 Bet (roadmap.md): Now
 Target metric (metrics.md): Agent impact answer success rate
@@ -44,6 +44,11 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
    fields where applicable.
    Reject branch: any core response that returns opaque text without structured
    recovery fields blocks acceptance.
+   Current read: core tool responses include `structuredContent`, live
+   `tools/list` includes local-write/idempotency metadata, and `mcp-smoke`
+   proves structured bad-input recovery. Specific output schemas,
+   namespaced aliases, filters/sort, pagination, and resource contracts remain
+   the next P1 refactor.
 4. FEDERATION BOUNDARY - Heddle responses identify absent, stale, skipped, or
    no-snapshot enrichment without claiming sibling-owned current truth.
    Reject branch: any response that treats Loomweave, Charter, Legis, Wardline,
@@ -79,10 +84,8 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
 
 - Broaden real-member dogfood beyond the current Lacuna/Loomweave case after
   Wardline, Filigree, and Legis interfaces are endorsed.
-- `tools/list` descriptions may need to become more workflow-oriented after
-  usability review.
-- The current MCP server emits JSON inside text content; acceptance should
-  decide whether that is acceptable under Weft MCP norms or requires refactor.
+- Broaden specific output schemas and MCP resources after federation interface
+  endorsement.
 
 ## Handoff
 

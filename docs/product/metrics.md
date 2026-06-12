@@ -13,6 +13,8 @@ Last read: 2026-06-13
 | Metric | Target | Current | Read on |
 |--------|--------|---------|---------|
 | MCP primary capability coverage | 4 of 4 core capabilities exposed through `tools/list`: `changed`, `timeline`, `blast_radius`, `reverify` | 4 of 4 | 2026-06-13 |
+| MCP survivability smoke | Real stdio MCP conversation completes `initialize`, `tools/list`, a successful tool call, a structured bad-input error, and a second `tools/list` after the error | `heddle mcp-smoke --repo . --json` passes with `ok: true` | 2026-06-13 |
+| Tool metadata coverage | 5 of 5 current tools advertise read/local-write status, idempotency, touched local paths, concurrency, repo requirement, and federation dependencies | 5 of 5 | 2026-06-13 |
 | Changed-set fast-path latency | p95 <= 250 ms on the planted spike corpus | 48.793924 ms measured in `spike/measurements.json` | 2026-06-13 |
 | Reverify honesty coverage | 100% of blast-radius and reverify responses include completeness, staleness, and enrichment state | Production snapshot capture has CLI/MCP entrypoints and real-member dogfood proves enriched reverify output | 2026-06-13 |
 | SEI enrichment path | Backfill and ingest can populate opaque SEI when Loomweave resolves an entity; absence degrades explicitly | Optional CLI path implemented and covered by tests | 2026-06-13 |
@@ -38,3 +40,6 @@ Last read: 2026-06-13
   baseline thresholds before it is allowed.
 - Any MCP regression that forces manual database inspection, raw grep, or
   sibling-specific tribal knowledge counts against the north-star.
+- `mcp-smoke` is a survivability and discoverability check, not the full
+  contract freeze. Namespaced aliases, specific output schemas, list
+  filters/sort, pagination, and resources remain the next P1 MCP work.
