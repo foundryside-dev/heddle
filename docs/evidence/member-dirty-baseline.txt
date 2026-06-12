@@ -1,0 +1,22 @@
+## /home/john/filigree
+ M CHANGELOG.md
+ M README.md
+ M uv.lock
+## /home/john/wardline
+ M CHANGELOG.md
+ M README.md
+ M docs/index.md
+ M docs/stylesheets/extra.css
+ M docs/stylesheets/weft-mkdocs.css
+ M mkdocs.yml
+ M src/wardline/cli/scan.py
+ M tests/unit/cli/test_cli.py
+ M www/index.html
+ M www/styles.css
+## /home/john/legis
+## /home/john/loomweave
+## /home/john/charter
+?? src/charter/__pycache__/
+?? tests/__pycache__/
+?? tests/contracts/__pycache__/
+?? tests/state/__pycache__/
