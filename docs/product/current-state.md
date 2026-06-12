@@ -64,6 +64,9 @@ tools in solo mode and better with federation member enrichment.
 - Added the federation value-add and MCP-first audit that maps pairwise value
   against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
   Shuttle/Codeweave-style execution member.
+- Expanded that audit with an endorsement-ready interface package: endorsed MCP
+  names, compatibility shims, success/error envelopes, entity refs, list
+  controls, resource URIs, tool contracts, and pairwise payload names.
 
 ## Next session, start here
 
@@ -72,4 +75,6 @@ Keep productization evidence fresh by running `heddle dogfood-eval` before
 `heddle productization-gate`. For further product work, start with the P1 MCP
 contract refactor in
 [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md).
-Do not dispatch sibling tickets until owner admission is explicit.
+If the federation side endorses that document, treat its Interface Endorsement
+Package as the agreed implementation target. Do not dispatch sibling tickets
+until owner admission is explicit.

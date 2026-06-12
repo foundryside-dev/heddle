@@ -16,6 +16,522 @@ pairwise enrichment model that makes agents prefer Heddle in real member repos.
 Any interface friction below is at least P1 because MCP is the primary product
 surface.
 
+## Interface Endorsement Package
+
+Status: proposed for federation endorsement. If the federation side endorses
+this section, treat these names and shapes as the agreed Heddle interfaces for
+the next implementation slice. Until then, this remains a Heddle-owned proposal.
+
+This package does not admit Heddle to the federation, freeze glossary terms, or
+authorize sibling repo changes. It defines the narrow interface Heddle proposes
+to expose and consume while preserving Weft doctrine: enrich-only, local-first,
+SEI opaque, no shared runtime, no shared store, no Heddle-owned governance,
+work-state, trust, requirements, or current-graph truth.
+
+### Authority Boundaries
+
+| Domain | Owning member | Heddle behavior |
+| --- | --- | --- |
+| Current structure, entity catalog, SEI minting/resolution | Loomweave | Consume and store SEI opaque; capture dated graph snapshots; never claim current graph truth. |
+| Work state, issues, observations, claims, lifecycle | Filigree | Read or propose links; never file, close, claim, or mutate work by default. |
+| Trust policy, findings, waivers, baselines, taint lattice | Wardline | Consume risk/finding facts as enrichment; never declare a change allowed or clean. |
+| Governance, signoff, CI/git attestations, overrides | Legis | Consume provenance and rename facts; emit advisory impact only; never govern. |
+| Requirements, traceability, verification evidence, baselines | Charter | Consume obligation context; never emit requirement satisfaction or release readiness. |
+| Demo corpus | Lacuna | Use as optional dogfood/showcase corpus; never as product authority. |
+| Change execution | Future Shuttle/Codeweave-style member | Do not bind until a real member exists. |
+
+### MCP Tool Names
+
+The endorsed surface should use namespaced object-action names. The current short
+names remain compatibility shims until glossary freeze.
+
+| Endorsed tool | Compatibility shim | Mutates | Purpose |
+| --- | --- | --- | --- |
+| `heddle_change_list` | `changed` | No | List temporal change facts for a repo and rev range. |
+| `heddle_entity_timeline_get` | `timeline` | No | Return ordered change history for one entity reference. |
+| `heddle_impact_radius_get` | `blast_radius` | No | Return downstream affected entities from dated snapshots. |
+| `heddle_reverify_worklist_get` | `reverify` | No | Return an agent-first worklist for what to reverify. |
+| `heddle_edge_snapshot_capture` | `capture_snapshot` | Yes, local Heddle state only | Capture a dated edge snapshot into `.weft/heddle/`. |
+| `heddle_project_context_get` | none | No | Return Heddle project context, capabilities, contract URIs, and current store status. |
+
+Tool aliases must return the same `schema` and data contract as the endorsed
+tool name. Agents should prefer the endorsed name when both are present.
+
+### Common Success Envelope
+
+Every Heddle MCP tool returns `structuredContent` with this envelope. The text
+content may contain the same object serialized as compact JSON for older hosts,
+but agents should not have to parse text to recover the contract.
+
+```json
+{
+  "schema": "heddle.<contract>.v1",
+  "ok": true,
+  "query": {
+    "repo": "/abs/path",
+    "tool": "heddle_change_list",
+    "arguments": {},
+    "filters": {},
+    "sort": {"by": "changed_at", "order": "asc"},
+    "page": {"limit": 50, "cursor": null}
+  },
+  "data": {},
+  "warnings": [],
+  "next_actions": {},
+  "enrichment": {
+    "sei": "present|absent|unavailable",
+    "edges": "present|absent|stale|partial|skipped|unavailable",
+    "work": "present|absent|unavailable",
+    "risk": "present|absent|unavailable",
+    "governance": "present|absent|unavailable",
+    "requirements": "present|absent|unavailable"
+  },
+  "meta": {
+    "producer": {"tool": "heddle", "version": "0.1.0"},
+    "local_only": true,
+    "peer_side_effects": []
+  }
+}
+```
+
+Rules:
+
+- `data` is tool-specific and schema-bound.
+- `query` echoes normalized inputs, defaults, filters, sort, and page controls.
+- `warnings` carry human-readable summaries; machines switch on structured
+  fields in `data`, `enrichment`, and `meta`.
+- `next_actions` contains ready-to-call MCP tool names and arguments.
+- Missing peers produce explicit `unavailable` enrichment, not transport
+  failure, empty ambiguity, or implied clean state.
+
+### Common Error Envelope
+
+Heddle should keep JSON-RPC error codes for protocol compatibility, but the
+`error.data` object should be stable and recoverable.
+
+```json
+{
+  "code": -32602,
+  "message": "invalid params",
+  "data": {
+    "schema": "heddle.error.v1",
+    "error_code": "invalid_rev_range",
+    "rejected_field": "rev_range",
+    "retryability": "retry_with_changes",
+    "hint": "Pass a git revision range resolvable from repo, such as HEAD~1..HEAD.",
+    "details": {}
+  }
+}
+```
+
+Required `retryability` values:
+
+- `retry_safe` - transient; retry same arguments.
+- `retry_with_changes` - caller must change an argument.
+- `fatal` - no agent-side recovery; surface to user.
+
+Initial `error_code` vocabulary:
+
+- `missing_required_field`
+- `invalid_repo`
+- `invalid_rev_range`
+- `invalid_entity_ref`
+- `invalid_changed_refs`
+- `invalid_depth`
+- `invalid_filter`
+- `invalid_sort`
+- `peer_unavailable`
+- `snapshot_unavailable`
+- `internal_error`
+
+### Common Input Objects
+
+Entity references should not force agents to know Heddle internal database ids.
+Tools may still accept `changed_entity_key_ids` for compatibility, but endorsed
+interfaces should prefer `entity_ref` and `changed_refs`.
+
+```json
+{
+  "entity_ref": {
+    "kind": "auto|locator|sei|path|qualname|heddle_entity_key_id",
+    "value": "src/pkg/mod.py::fn"
+  }
+}
+```
+
+```json
+{
+  "changed_refs": [
+    {"kind": "locator", "value": "src/pkg/mod.py::fn"},
+    {"kind": "sei", "value": "loomweave:eid:..."}
+  ]
+}
+```
+
+Common list controls:
+
+```json
+{
+  "limit": 50,
+  "cursor": null,
+  "sort_by": "changed_at",
+  "sort_order": "asc",
+  "filters": {}
+}
+```
+
+List outputs include:
+
+```json
+{
+  "items": [],
+  "page": {
+    "limit": 50,
+    "next_cursor": null,
+    "has_more": false
+  }
+}
+```
+
+### Tool Contracts
+
+#### `heddle_change_list`
+
+Intent: list temporal change facts for a repo and revision range, then hand the
+agent ready-to-call impact/reverify actions.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "rev_range": "HEAD~1..HEAD",
+  "base_ref": null,
+  "head_ref": null,
+  "filters": {
+    "path_prefix": null,
+    "entity_kind": null,
+    "change_kind": null,
+    "actor": null,
+    "commit": null,
+    "since": null,
+    "until": null,
+    "has_sei": null
+  },
+  "sort_by": "changed_at|path|actor|change_kind",
+  "sort_order": "asc|desc",
+  "limit": 50,
+  "cursor": null,
+  "include_next_actions": true
+}
+```
+
+Output `data`:
+
+```json
+{
+  "items": [
+    {
+      "change_id": "heddle:change:...",
+      "entity": {
+        "heddle_entity_key_id": 1,
+        "locator": "python:function:src/pkg/mod.py::fn",
+        "sei": null,
+        "path": "src/pkg/mod.py"
+      },
+      "change_kind": "modified",
+      "actor": "agent:codex",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "changed_at": "2026-06-13T00:00:00Z"
+    }
+  ],
+  "changed_refs": [
+    {"kind": "heddle_entity_key_id", "value": "1"}
+  ],
+  "page": {"limit": 50, "next_cursor": null, "has_more": false}
+}
+```
+
+Required `next_actions`:
+
+- `heddle_reverify_worklist_get`
+- `heddle_impact_radius_get`
+
+#### `heddle_entity_timeline_get`
+
+Intent: return the ordered temporal history for one entity reference.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "entity_ref": {"kind": "auto", "value": "src/pkg/mod.py::fn"},
+  "filters": {
+    "change_kind": null,
+    "actor": null,
+    "commit": null,
+    "since": null,
+    "until": null
+  },
+  "sort_by": "changed_at|commit",
+  "sort_order": "asc|desc",
+  "limit": 50,
+  "cursor": null
+}
+```
+
+Output `data`:
+
+```json
+{
+  "entity": {
+    "locator": "python:function:src/pkg/mod.py::fn",
+    "sei": null,
+    "identity_status": "stable|fragile|unknown"
+  },
+  "items": [],
+  "page": {"limit": 50, "next_cursor": null, "has_more": false}
+}
+```
+
+#### `heddle_impact_radius_get`
+
+Intent: return affected downstream entities from Heddle's dated snapshots,
+without claiming current graph truth.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "rev_range": null,
+  "changed_refs": [],
+  "changed_entity_key_ids": [],
+  "depth": 2,
+  "filters": {
+    "edge_kind": null,
+    "confidence": null,
+    "path_prefix": null,
+    "max_commits_behind": null
+  },
+  "sort_by": "depth|confidence|path|changed_at|risk",
+  "sort_order": "asc|desc",
+  "limit": 100,
+  "cursor": null
+}
+```
+
+Output `data`:
+
+```json
+{
+  "completeness": "FULL|DELTA|NO_SNAPSHOT|SKIPPED",
+  "staleness": {
+    "snapshot_commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "commits_behind": 0
+  },
+  "changed": [],
+  "affected": [
+    {
+      "entity": {"locator": "python:function:src/pkg/consumer.py::consumer", "sei": null},
+      "depth": 1,
+      "via_edges": [{"from": "1", "to": "2", "kind": "calls", "confidence": "resolved"}]
+    }
+  ],
+  "page": {"limit": 100, "next_cursor": null, "has_more": false}
+}
+```
+
+#### `heddle_reverify_worklist_get`
+
+Intent: return the flagship agent worklist: what to reverify, why, how stale or
+complete the evidence is, and which sibling facts enriched the recommendation.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "rev_range": "HEAD~1..HEAD",
+  "changed_refs": [],
+  "changed_entity_key_ids": [],
+  "depth": 2,
+  "filters": {
+    "path_prefix": null,
+    "risk_min": null,
+    "finding_state": null,
+    "requirement_id": null,
+    "verification_state": null,
+    "issue_status": null,
+    "governance_state": null,
+    "max_commits_behind": null
+  },
+  "sort_by": "priority|risk|depth|changed_at|staleness",
+  "sort_order": "asc|desc",
+  "group_by": "entity|file|requirement|issue|none",
+  "limit": 100,
+  "cursor": null,
+  "include_federation": true
+}
+```
+
+Output `data`:
+
+```json
+{
+  "completeness": "FULL|DELTA|NO_SNAPSHOT|SKIPPED",
+  "staleness": {"snapshot_commit": null, "commits_behind": null},
+  "items": [
+    {
+      "entity": {"locator": "python:function:src/pkg/mod.py::fn", "sei": null},
+      "priority": "P1|P2|P3|unknown",
+      "reason": "changed|downstream|risk_enriched|requirement_enriched",
+      "depth": 0,
+      "why": [],
+      "suggested_verification": [
+        {"kind": "test", "command": "run tests touching this entity if known"}
+      ],
+      "enrichment": {
+        "work": [],
+        "risk": [],
+        "governance": [],
+        "requirements": []
+      }
+    }
+  ],
+  "page": {"limit": 100, "next_cursor": null, "has_more": false}
+}
+```
+
+#### `heddle_edge_snapshot_capture`
+
+Intent: capture a dated snapshot of Loomweave edges into Heddle's local state.
+This is the only endorsed mutating tool, and it mutates only `.weft/heddle/`.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "commit": "HEAD",
+  "mode": "full|changed_only",
+  "changed_refs": [],
+  "if_stale_after": null,
+  "max_entities": 1000,
+  "dry_run": false,
+  "idempotency_key": null
+}
+```
+
+Output `data`:
+
+```json
+{
+  "snapshot_id": 1,
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "source": "loomweave",
+  "source_version": "1.1.0-rc4",
+  "completeness": "FULL|DELTA|SKIPPED",
+  "entities": 10,
+  "edges": 12,
+  "failed_entities": [],
+  "idempotency": "created|already_current|dry_run"
+}
+```
+
+Idempotency contract: repeated calls for the same repo, commit, mode, and
+effective entity set must return `already_current` or replace the local Heddle
+snapshot atomically without mutating siblings.
+
+#### `heddle_project_context_get`
+
+Intent: let an agent discover Heddle's local project state and contract
+resources before calling task tools.
+
+Input:
+
+```json
+{
+  "repo": "/abs/path",
+  "include_contracts": true
+}
+```
+
+Output `data`:
+
+```json
+{
+  "store": {"path": ".weft/heddle/heddle.db", "schema_version": 1},
+  "capabilities": [
+    {"name": "heddle_change_list", "mutates": false, "local_only": true}
+  ],
+  "contract_resources": [
+    "heddle://contracts/heddle.change_list.v1",
+    "heddle://contracts/heddle.reverify_worklist.v1"
+  ],
+  "peer_status": {
+    "loomweave": "available|unavailable|unknown",
+    "filigree": "available|unavailable|unknown",
+    "wardline": "available|unavailable|unknown",
+    "legis": "available|unavailable|unknown",
+    "charter": "available|unavailable|unknown"
+  }
+}
+```
+
+### MCP Resource Contracts
+
+Endorsed resources:
+
+- `heddle://project/context`
+- `heddle://contracts/heddle.error.v1`
+- `heddle://contracts/heddle.change_list.v1`
+- `heddle://contracts/heddle.entity_timeline.v1`
+- `heddle://contracts/heddle.impact_radius.v1`
+- `heddle://contracts/heddle.reverify_worklist.v1`
+- `heddle://contracts/heddle.edge_snapshot.v1`
+
+Resources are read-only and local. They document contract shapes; they do not
+act as a registry or shared runtime.
+
+### Pairwise Federation Interfaces
+
+These are the proposed pairwise interfaces to endorse. Each is optional and
+enrich-only.
+
+| Pair | Heddle consumes | Heddle exposes | Degradation rule |
+| --- | --- | --- | --- |
+| Loomweave + Heddle | `entity_resolve`, `entity_neighborhood_get`, current locator/SEI facts | `heddle.edge_snapshot.v1`, `heddle.entity_temporal_summary.v1` | If Loomweave is absent, Heddle returns locator-keyed facts with `sei=unavailable`, `edges=unavailable` or `SKIPPED`. |
+| Filigree + Heddle | Entity associations, issue/work status, reconciliation feed | `heddle.reverify_worklist.v1` candidate work context and optional `next_actions.filigree` | If Filigree is absent, Heddle omits work enrichment and never auto-files work. |
+| Wardline + Heddle | Finding/risk facts, suppression state, taint/trust-boundary context | `heddle.affected_scope.v1` for scoped scan hints | If Wardline is absent, Heddle says `risk=unavailable`; it never treats absence as clean. |
+| Legis + Heddle | `git_rename_list` / rename feed, branch/commit/PR/governance context | `heddle.preflight_impact.v1` advisory affected-set facts | If Legis is absent, Heddle uses raw git history and marks governance enrichment unavailable. |
+| Charter + Heddle | Requirement links, verification freshness, baseline exposure | `heddle.obligation_impact_context.v1` advisory impacted obligations | If Charter is absent, Heddle omits requirement enrichment and never emits readiness verdicts. |
+| Lacuna + Heddle | Seeded demo changes and expected tour cases | Dogfood/demo results only | If Lacuna changes, synthetic dogfood remains the release gate. |
+
+Proposed payload names:
+
+- `heddle.entity_temporal_summary.v1` - per-entity churn, recent changes,
+  last-touched actor/time, and snapshot staleness.
+- `heddle.affected_scope.v1` - changed and affected entity refs with
+  completeness/staleness for peer scoping.
+- `heddle.preflight_impact.v1` - advisory impacted entities for governance
+  context.
+- `heddle.obligation_impact_context.v1` - advisory impacted entities grouped by
+  Charter requirement ids.
+
+### Endorsement Checklist
+
+Federation endorsement should confirm:
+
+- Heddle owns only temporal change facts and dated edge snapshots.
+- Endorsed MCP names are acceptable in a multi-server tool list.
+- The compatibility shims may remain until glossary freeze.
+- The common envelope, error envelope, entity refs, list controls, and resource
+  URIs are acceptable as Heddle's contract family.
+- Pairwise payloads are enrich-only and do not require sibling presence.
+- Sibling-side work remains post-admission or separately approved.
+
 ## Federation Value Add
 
 ### Loomweave
