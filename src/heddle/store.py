@@ -273,3 +273,75 @@ class HeddleStore:
             (repo_id, code, message),
         )
         self.conn.commit()
+
+    def create_edge_snapshot(
+        self,
+        repo_id: str,
+        commit_sha: str,
+        source: str,
+        source_version: str,
+        completeness: str,
+    ) -> int:
+        if completeness not in {"FULL", "DELTA", "SKIPPED"}:
+            raise ValueError(f"invalid snapshot completeness: {completeness}")
+        cur = self.conn.execute(
+            """
+            INSERT INTO edge_snapshots(repo_id, commit_sha, source, source_version, completeness)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(repo_id, commit_sha, source) DO UPDATE SET
+              source_version = excluded.source_version,
+              completeness = excluded.completeness,
+              captured_at = CURRENT_TIMESTAMP
+            RETURNING id
+            """,
+            (repo_id, commit_sha, source, source_version, completeness),
+        )
+        row = cur.fetchone()
+        self.conn.commit()
+        if row is None:
+            raise RuntimeError("failed to create edge snapshot")
+        return int(row["id"])
+
+    def append_snapshot_edge(
+        self,
+        snapshot_id: int,
+        *,
+        source_entity_key_id: int,
+        target_entity_key_id: int,
+        edge_kind: str,
+        confidence: str,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO snapshot_edges(
+              snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind, confidence
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind, confidence),
+        )
+        self.conn.commit()
+
+    def latest_snapshot(self, repo: Path) -> dict[str, object] | None:
+        repo_id = self._repo_id(repo)
+        row = self.conn.execute(
+            """
+            SELECT id, commit_sha, source, source_version, captured_at, completeness
+              FROM edge_snapshots
+             WHERE repo_id = ?
+             ORDER BY id DESC
+             LIMIT 1
+            """,
+            (repo_id,),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def snapshot_edges(self, snapshot_id: int) -> list[dict[str, object]]:
+        rows = self.conn.execute(
+            """
+            SELECT source_entity_key_id, target_entity_key_id, edge_kind, confidence
+              FROM snapshot_edges
+             WHERE snapshot_id = ?
+            """,
+            (snapshot_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
