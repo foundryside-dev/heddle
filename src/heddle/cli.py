@@ -8,6 +8,7 @@ from heddle import __version__, commands
 from heddle.git import backfill, ingest_commit
 from heddle.install import install_hook
 from heddle.loomweave import LoomweaveProbe
+from heddle.productization import read_productization_decision
 from heddle.store import HeddleStore, default_store_path
 
 
@@ -59,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     reverify_parser.add_argument("--depth", type=int, default=2)
     reverify_parser.add_argument("--json", action="store_true")
 
+    productization_parser = sub.add_parser("productization-gate")
+    productization_parser.add_argument("--report", default="spike/REPORT.md")
+
     return parser
 
 
@@ -105,6 +109,15 @@ def main(argv: list[str] | None = None) -> int:
         payload = commands.reverify(args.repo, args.changed_entity_key_id, args.depth)
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0
+    if args.command == "productization-gate":
+        decision = read_productization_decision(Path(args.report))
+        payload = {
+            "allowed": decision.allowed,
+            "recommendation": decision.recommendation,
+            "reason": decision.reason,
+        }
+        print(json.dumps(payload, sort_keys=True))
+        return 0 if decision.allowed else 2
     parser.print_help()
     return 0
 
