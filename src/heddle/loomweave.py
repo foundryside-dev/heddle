@@ -99,6 +99,9 @@ class LoomweaveMcpClient:
         payload = json.loads(text)
         if not isinstance(payload, dict):
             raise RuntimeError("loomweave tool returned non-object payload")
+        result = payload.get("result")
+        if payload.get("ok") is True and isinstance(result, dict):
+            return result
         return payload
 
     def neighborhood(self, entity: str) -> dict[str, Any]:

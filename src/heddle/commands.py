@@ -4,8 +4,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from heddle.loomweave import LoomweaveMcpClient, LoomweaveProbe
 from heddle.propagation import blast_radius as compute_blast_radius
 from heddle.reverify import render_reverify_worklist
+from heddle.snapshot import capture_edge_snapshot
 from heddle.store import HeddleStore, default_store_path
 
 
@@ -94,3 +96,28 @@ def reverify(repo: Path, changed_entity_key_ids: list[int], depth: int = 2) -> d
         "query": "reverify",
         **render_reverify_worklist(result),
     }
+
+
+def capture_snapshot(
+    repo: Path,
+    commit: str | None = None,
+    loomweave_command: str = "loomweave",
+) -> dict[str, Any]:
+    probe = LoomweaveProbe(repo=repo, command=loomweave_command).probe()
+    status = probe.get("status")
+    source_version = str(probe.get("version") or probe.get("reason") or "unknown")
+    client = None
+    if status == "available":
+        client = LoomweaveMcpClient(repo=repo, command=loomweave_command)
+    with HeddleStore.open(default_store_path(repo)) as store:
+        result = capture_edge_snapshot(
+            store,
+            repo,
+            commit_sha=commit,
+            client=client,
+            source_version=source_version,
+        )
+        return {
+            "heddle_schema_version": store.schema_version(),
+            **result,
+        }

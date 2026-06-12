@@ -14,6 +14,9 @@ structure, requirements, work state, trust policy, or governance.
 - `timeline` - ordered change events for an entity.
 - `blast_radius` - downstream affected set over dated snapshots.
 - `reverify` - agent-consumable re-verification worklist.
+- `capture_snapshot` - local dated edge snapshot capture from Loomweave's
+  published read surface.
 
-All tools are read-only and local-only. Sibling absence returns explicit
-enrichment/completeness fields, not transport failure.
+All peer-facing behavior is local-only. `capture_snapshot` mutates Heddle's
+local `.weft/heddle/` state only; it never mutates sibling repos. Sibling
+absence returns explicit enrichment/completeness fields, not transport failure.

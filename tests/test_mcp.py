@@ -31,7 +31,7 @@ def test_tools_list_contains_changed_and_timeline() -> None:
     response = dispatch({"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}})
     tools = response["result"]["tools"]
     names = {tool["name"] for tool in tools}
-    assert {"changed", "timeline", "blast_radius", "reverify"} <= names
+    assert {"changed", "timeline", "blast_radius", "reverify", "capture_snapshot"} <= names
     for tool in tools:
         assert "inputSchema" in tool
         output_schema = tool["outputSchema"]
@@ -134,3 +134,30 @@ def test_changed_response_feeds_reverify_in_two_tool_calls(
     assert reverify["schema"] == "heddle.draft.reverify.v1"
     assert reverify["ok"] is True
     assert reverify["data"]["completeness"] == "NO_SNAPSHOT"
+
+
+def test_capture_snapshot_mcp_degrades_without_loomweave(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    response = dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "capture_snapshot",
+                "arguments": {
+                    "repo": str(repo),
+                    "commit": "c1",
+                    "loomweave_command": "/no/such/loomweave",
+                },
+            },
+        }
+    )
+    payload = tool_payload(response)
+    assert payload["schema"] == "heddle.draft.capture_snapshot.v1"
+    assert payload["ok"] is True
+    assert payload["data"]["query"] == "capture_snapshot"
+    assert payload["data"]["completeness"] == "SKIPPED"
+    assert payload["warnings"] == ["SKIPPED: graph snapshot was skipped; changed set only"]

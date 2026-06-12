@@ -23,8 +23,9 @@ least as good as existing tools in solo mode and better with federation members.
 
 - Production ingest/backfill does not resolve SEI through Loomweave or another
   published identity surface.
-- Production queries do not yet capture or refresh dated edge snapshots, so
-  `blast_radius`/`reverify` mostly produce honest `NO_SNAPSHOT` answers.
+- Production snapshot capture now has CLI/MCP entrypoints, but `blast_radius` /
+  `reverify` still need dogfood proof that captured snapshots make the workflow
+  at least as useful as existing tools.
 - Federation uplift is unproven: Loomweave is adapter/test-only and
   Filigree/Wardline/Legis/Charter enrichment paths are not wired.
 - MCP is improving but still needs full live-envelope fixtures, recoverable
@@ -48,6 +49,8 @@ least as good as existing tools in solo mode and better with federation members.
   killing the server, tools advertise output schemas, `changed` feeds
   `reverify` ids, default state moves to `.weft/heddle/`, and undecodable Python
   files degrade to file locators.
+- Added `capture-snapshot` / `capture_snapshot` as the production path for
+  dated Loomweave edge snapshot capture into local Heddle state.
 
 ## Next session, start here
 

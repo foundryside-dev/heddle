@@ -327,6 +327,10 @@ class HeddleStore:
         )
         self.conn.commit()
 
+    def clear_snapshot_edges(self, snapshot_id: int) -> None:
+        self.conn.execute("DELETE FROM snapshot_edges WHERE snapshot_id = ?", (snapshot_id,))
+        self.conn.commit()
+
     def latest_snapshot(self, repo: Path) -> dict[str, object] | None:
         repo_id = self._repo_id(repo)
         row = self.conn.execute(

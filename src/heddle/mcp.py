@@ -75,6 +75,24 @@ TOOLS = [
         },
         "outputSchema": CORE_OUTPUT_SCHEMA,
     },
+    {
+        "name": "capture_snapshot",
+        "description": (
+            "Capture a dated Loomweave edge snapshot into Heddle's local store. "
+            "Mutates only .weft/heddle state; never mutates sibling repos."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string"},
+                "commit": {"type": "string"},
+                "loomweave_command": {"type": "string"},
+            },
+            "required": ["repo"],
+            "additionalProperties": False,
+        },
+        "outputSchema": CORE_OUTPUT_SCHEMA,
+    },
 ]
 
 
@@ -84,6 +102,7 @@ def _schema_for_tool(name: str) -> str:
         "timeline": "heddle.draft.timeline.v1",
         "blast_radius": "heddle.draft.blast_radius.v1",
         "reverify": "heddle.draft.reverify.v1",
+        "capture_snapshot": "heddle.draft.capture_snapshot.v1",
     }[name]
 
 
@@ -93,6 +112,8 @@ def _warnings_for_result(result: dict[str, Any]) -> list[str]:
         return ["NO_SNAPSHOT: downstream traversal unavailable; changed set only"]
     if completeness == "SKIPPED":
         return ["SKIPPED: graph snapshot was skipped; changed set only"]
+    if completeness == "DELTA":
+        return ["DELTA: graph snapshot is partial; inspect failed_entities or staleness"]
     return []
 
 
@@ -143,6 +164,15 @@ def _string_arg(args: dict[str, Any], name: str) -> str:
     value = args.get(name)
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} is required and must be a non-empty string")
+    return value
+
+
+def _optional_string_arg(args: dict[str, Any], name: str, default: str | None = None) -> str | None:
+    value = args.get(name, default)
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"{name} must be a non-empty string")
     return value
 
 
@@ -210,6 +240,19 @@ def dispatch(request: dict[str, Any]) -> dict[str, Any]:
                     _repo_arg(args),
                     _changed_entity_key_ids(args),
                     _depth_arg(args),
+                ),
+            )
+        if name == "capture_snapshot":
+            return _tool_result(
+                id_value,
+                "capture_snapshot",
+                commands.capture_snapshot(
+                    _repo_arg(args),
+                    commit=_optional_string_arg(args, "commit"),
+                    loomweave_command=_optional_string_arg(
+                        args, "loomweave_command", "loomweave"
+                    )
+                    or "loomweave",
                 ),
             )
     except ValueError as exc:

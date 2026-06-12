@@ -1,8 +1,30 @@
 from __future__ import annotations
 
-from typing import Any
+import subprocess
+from pathlib import Path
+from typing import Any, Protocol
 
 from heddle.store import HeddleStore
+
+
+class NeighborhoodClient(Protocol):
+    def neighborhood(self, entity: str) -> dict[str, Any]:
+        ...
+
+
+def _resolve_commit(repo: Path, commit: str | None) -> str:
+    if commit is not None:
+        return commit
+    proc = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return "UNKNOWN"
+    return proc.stdout.strip()
 
 
 def record_skipped_snapshot(
@@ -18,6 +40,109 @@ def record_skipped_snapshot(
         source_version=reason,
         completeness="SKIPPED",
     )
+
+
+def capture_edge_snapshot(
+    store: HeddleStore,
+    repo: Path,
+    *,
+    commit_sha: str | None = None,
+    client: NeighborhoodClient | None,
+    source_version: str,
+) -> dict[str, Any]:
+    repo_id = store.ensure_repo(repo)
+    resolved_commit = _resolve_commit(repo, commit_sha)
+    if client is None:
+        snapshot_id = record_skipped_snapshot(store, repo_id, resolved_commit, source_version)
+        store.clear_snapshot_edges(snapshot_id)
+        return {
+            "query": "capture_snapshot",
+            "commit_sha": resolved_commit,
+            "snapshot_id": snapshot_id,
+            "source": "loomweave",
+            "source_version": source_version,
+            "completeness": "SKIPPED",
+            "entities": 0,
+            "edges": 0,
+            "enrichment": {"edges": "skipped"},
+        }
+
+    locator_to_id: dict[str, int] = {}
+    for row in store.list_entity_keys(repo):
+        locator = row.get("locator")
+        key_id = row.get("id")
+        if isinstance(locator, str) and isinstance(key_id, int):
+            locator_to_id[locator] = key_id
+    snapshot_id = store.create_edge_snapshot(
+        repo_id=repo_id,
+        commit_sha=resolved_commit,
+        source="loomweave",
+        source_version=source_version,
+        completeness="FULL",
+    )
+    store.clear_snapshot_edges(snapshot_id)
+
+    edge_count = 0
+    failures: list[dict[str, str]] = []
+    for locator in sorted(locator_to_id):
+        try:
+            neighborhood = client.neighborhood(locator)
+            edges = edges_from_neighborhood(neighborhood)
+        except Exception as exc:
+            failures.append({"locator": locator, "reason": str(exc)})
+            continue
+        for source, target, edge_kind in sorted(edges):
+            source_id = _entity_key_id_for_locator(
+                store, repo_id, locator_to_id, source, resolved_commit
+            )
+            target_id = _entity_key_id_for_locator(
+                store, repo_id, locator_to_id, target, resolved_commit
+            )
+            store.append_snapshot_edge(
+                snapshot_id,
+                source_entity_key_id=source_id,
+                target_entity_key_id=target_id,
+                edge_kind=edge_kind,
+                confidence="resolved",
+            )
+            edge_count += 1
+
+    completeness = "DELTA" if failures else "FULL"
+    if failures:
+        store.create_edge_snapshot(
+            repo_id=repo_id,
+            commit_sha=resolved_commit,
+            source="loomweave",
+            source_version=source_version,
+            completeness=completeness,
+        )
+
+    return {
+        "query": "capture_snapshot",
+        "commit_sha": resolved_commit,
+        "snapshot_id": snapshot_id,
+        "source": "loomweave",
+        "source_version": source_version,
+        "completeness": completeness,
+        "entities": len(locator_to_id),
+        "edges": edge_count,
+        "failed_entities": failures,
+        "enrichment": {"edges": "partial" if failures else "present"},
+    }
+
+
+def _entity_key_id_for_locator(
+    store: HeddleStore,
+    repo_id: str,
+    locator_to_id: dict[str, int],
+    locator: str,
+    commit_sha: str,
+) -> int:
+    if locator in locator_to_id:
+        return locator_to_id[locator]
+    key_id = store.ensure_entity_key(repo_id, locator=locator, sei=None, commit_sha=commit_sha)
+    locator_to_id[locator] = key_id
+    return key_id
 
 
 def _entity_id(row: dict[str, Any]) -> str | None:

@@ -10,6 +10,13 @@
       "authority_boundary": "Traverses Heddle's dated snapshots; does not answer current graph truth."
     },
     {
+      "name": "capture_snapshot",
+      "mutates": true,
+      "local_only": true,
+      "peer_side_effects": [],
+      "authority_boundary": "Captures dated edge snapshots into Heddle local state; does not mutate sibling repos or claim current graph truth."
+    },
+    {
       "name": "changed",
       "mutates": false,
       "local_only": true,

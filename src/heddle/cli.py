@@ -60,6 +60,12 @@ def build_parser() -> argparse.ArgumentParser:
     reverify_parser.add_argument("--depth", type=int, default=2)
     reverify_parser.add_argument("--json", action="store_true")
 
+    capture_snapshot_parser = sub.add_parser("capture-snapshot")
+    capture_snapshot_parser.add_argument("--repo", type=Path, default=Path("."))
+    capture_snapshot_parser.add_argument("--commit")
+    capture_snapshot_parser.add_argument("--loomweave-command", default="loomweave")
+    capture_snapshot_parser.add_argument("--json", action="store_true")
+
     productization_parser = sub.add_parser("productization-gate")
     productization_parser.add_argument("--report", default="spike/REPORT.md")
 
@@ -107,6 +113,14 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "reverify":
         payload = commands.reverify(args.repo, args.changed_entity_key_id, args.depth)
+        print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
+        return 0
+    if args.command == "capture-snapshot":
+        payload = commands.capture_snapshot(
+            args.repo,
+            commit=args.commit,
+            loomweave_command=args.loomweave_command,
+        )
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0
     if args.command == "productization-gate":
