@@ -1,10 +1,10 @@
 # ADR-0001 — Spike-first posture: this package designs to a go/no-go, not a build
 
 **Status:** Accepted · 2026-06-10
-**Context:** PDR-0013 (weft) ranks Heddle as discovery slot #1 with a standing
+**Context:** PDR-0013 (weft) ranks Warpline as discovery slot #1 with a standing
 agentic-first admission bar; doctrine §7 reserves member admission to the owner;
 the owner directed (2026-06-10) that spare capacity explore future systems while
-the four launch members stay frozen. Naive Heddle framing is a forbidden
+the four launch members stay frozen. Naive Warpline framing is a forbidden
 aggregator (doctrine §6) — the concept's own source names this as the reason it
 is a spike.
 

@@ -51,4 +51,4 @@ NFRs (from `03-`) · satisfied requirements.
 - **Interface:** internal repository API (append-only events; immutable snapshots)
 - **Dependencies:** SQLite
 - **NFRs:** NFR-05 (placement), NFR-01/02 (indexing), NFR-03
-- **Requirements:** FR-02 (timeline), FR-05; CON-ORG-01 (stores ONLY Heddle-authoritative temporal data — the aggregator firewall, ADR-0004)
+- **Requirements:** FR-02 (timeline), FR-05; CON-ORG-01 (stores ONLY Warpline-authoritative temporal data — the aggregator firewall, ADR-0004)

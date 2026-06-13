@@ -3,12 +3,12 @@
 Command:
 
 ```bash
-uv run heddle dogfood-eval --real-member-repo /home/john/lacuna --output /tmp/heddle-dogfood-results.json --json
+uv run warpline dogfood-eval --real-member-repo /home/john/lacuna --output /tmp/warpline-dogfood-results.json --json
 ```
 
 Result:
 
-- Schema: `heddle.dogfood_results.v1`
+- Schema: `warpline.dogfood_results.v1`
 - Real-member lane: 1/1 Lacuna case met parity against an executed
   `git diff --name-only` plus `rg` baseline.
 - Real Loomweave lane: 1/1 Lacuna case showed uplift after MCP
@@ -18,11 +18,11 @@ Result:
 - Synthetic solo lane: 0/10 cases passed after `NO_SNAPSHOT` was removed from
   the parity predicate; this lane is smoke coverage, not readiness evidence.
 - Manual escape required: 0/1 real-member readiness cases.
-- Output artifact: `/tmp/heddle-dogfood-results.json`
+- Output artifact: `/tmp/warpline-dogfood-results.json`
 
 Interpretation:
 
 This satisfies the current product-candidate threshold: one real member repo
 must pass baseline parity, real Loomweave snapshot capture, and non-empty MCP
-`changed -> reverify` uplift. Seeded cases still protect the Heddle-owned graph
+`changed -> reverify` uplift. Seeded cases still protect the Warpline-owned graph
 contract, but they no longer decide readiness by themselves.

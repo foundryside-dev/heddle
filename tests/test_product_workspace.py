@@ -23,18 +23,18 @@ def test_product_workspace_has_required_ownership_artifacts() -> None:
         assert (PRODUCT_ROOT / path).exists(), path
 
 
-def test_vision_names_heddle_federation_authority_and_refusals() -> None:
+def test_vision_names_warpline_federation_authority_and_refusals() -> None:
     text = read_product_doc("vision.md")
-    assert "Heddle owns temporal change-impact facts" in text
+    assert "Warpline owns temporal change-impact facts" in text
     assert "Loomweave owns current structure" in text
-    assert "Heddle does not own work state, trust policy, governance, or obligations" in text
+    assert "Warpline does not own work state, trust policy, governance, or obligations" in text
     assert "Escalate BEFORE acting" in text
 
 
 def test_mcp_product_design_treats_agent_surface_as_primary() -> None:
     text = read_product_doc("agentic-mcp-product-design.md")
     assert "MCP deficiencies are P0 product defects" in text
-    assert "Heddle has no reason to exist" in text
+    assert "Warpline has no reason to exist" in text
     assert "at least as good as existing tools" in text
     assert "better with federation members" in text
     assert "tools/list is the front door" in text

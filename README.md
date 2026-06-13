@@ -1,8 +1,8 @@
-# heddle — temporal change-impact authority
+# warpline — temporal change-impact authority
 
 Version 1.0.0 · Weft federation member (5th) · local-first · enrich-only
 
-heddle is the Weft federation's **temporal / change-impact authority**. It owns
+warpline is the Weft federation's **temporal / change-impact authority**. It owns
 the one thing no other member stores — **per-entity change history across runs,
 keyed on SEI** — and the downstream-propagation query over it. It answers, every
 session, the question an agent asks before claiming a change is done:
@@ -11,67 +11,67 @@ session, the question an agent asks before claiming a change is done:
 > downstream-affected over the call graph, and what must I re-verify?*
 
 The federation split is deliberate: **loomweave owns "now"** (the point-in-time
-graph and SEI minting); **heddle owns "over time"** (dated change facts and edge
-snapshots). heddle is **enrich-only** — it boots, ingests, and answers with no
+graph and SEI minting); **warpline owns "over time"** (dated change facts and edge
+snapshots). warpline is **enrich-only** — it boots, ingests, and answers with no
 sibling installed, and its facts are advisory and never gate.
 
 ## Features
 
 - **6 MCP tools** for change lists, entity timelines, churn counts, impact
   radius, reverify worklists, and dated edge-snapshot capture — each with a
-  frozen `heddle.<contract>.v1` schema.
+  frozen `warpline.<contract>.v1` schema.
 - **Honest answers**: every response carries `completeness` + `staleness` and a
   CLOSED `enrichment` vocabulary (`present | absent | unavailable`). Sibling
   absence is explicit, never an implied "clean/allowed" state.
-- **Local-first & safe**: all state lives under `.weft/heddle/` (git-ignored);
+- **Local-first & safe**: all state lives under `.weft/warpline/` (git-ignored);
   the only mutating tool writes there and never touches a sibling repo.
 - **Real SEI resolution** against the live loomweave, deployment-independent.
-- **Federation member lifecycle**: `heddle install` / `heddle doctor [--fix]`
+- **Federation member lifecycle**: `warpline install` / `warpline doctor [--fix]`
   wire and verify MCP bindings, hooks, the agent skill, and config.
-- **Endorsed names + short shims**: e.g. `heddle_change_list` and `changed`
+- **Endorsed names + short shims**: e.g. `warpline_change_list` and `changed`
   return identical schema and data.
 
 ## Installation
 
 Install as a [uv](https://docs.astral.sh/uv/) tool (recommended — provides the
-`heddle` and `heddle-mcp` executables on your `PATH`):
+`warpline` and `warpline-mcp` executables on your `PATH`):
 
 ```bash
-uv tool install heddle
-heddle --version        # heddle 1.0.0
+uv tool install warpline
+warpline --version        # warpline 1.0.0
 ```
 
 For development from a checkout:
 
 ```bash
-git clone <repo-url> heddle && cd heddle
-uv run heddle --version
+git clone <repo-url> warpline && cd warpline
+uv run warpline --version
 ```
 
 **Requires Python ≥ 3.12.**
 
 ## Quick start
 
-### 1. Install heddle into a repository
+### 1. Install warpline into a repository
 
-`heddle install` wires heddle as a federation member of the target repo —
+`warpline install` wires warpline as a federation member of the target repo —
 idempotent, atomic, and it never clobbers a sibling's config block:
 
 ```bash
-heddle install --repo /path/to/project   # MCP bindings, hooks, skill, config
-heddle doctor  --repo /path/to/project   # verify; add --fix to autofix
+warpline install --repo /path/to/project   # MCP bindings, hooks, skill, config
+warpline doctor  --repo /path/to/project   # verify; add --fix to autofix
 ```
 
 `doctor` exits non-zero if anything is missing and prints a per-component
-report (`--json` emits a `heddle.doctor.v1` summary).
+report (`--json` emits a `warpline.doctor.v1` summary).
 
 ### 2. The core loop (CLI)
 
 ```bash
-heddle backfill --repo /path/to/project --json          # ingest git history
-heddle changed  --repo /path/to/project --rev-range HEAD~1..HEAD --json
-heddle capture-snapshot --repo /path/to/project --json  # capture loomweave edges
-heddle reverify --repo /path/to/project --changed-entity-key-id 1 --json
+warpline backfill --repo /path/to/project --json          # ingest git history
+warpline changed  --repo /path/to/project --rev-range HEAD~1..HEAD --json
+warpline capture-snapshot --repo /path/to/project --json  # capture loomweave edges
+warpline reverify --repo /path/to/project --changed-entity-key-id 1 --json
 ```
 
 The post-commit hook installed in step 1 keeps the temporal store fresh as you
@@ -81,10 +81,10 @@ commit, so `changed`/`timeline`/`churn` answer without a manual backfill.
 
 1. `tools/list` — discover the surface (read/write posture, idempotency, repo
    requirement, touched paths, federation dependencies).
-2. `heddle_change_list` (`changed`) — **call first**; read its `next_actions`.
-3. `heddle_reverify_worklist_get` (`reverify`) — the worklist to recheck.
-4. `heddle_impact_radius_get` / `heddle_entity_timeline_get` — for explanation.
-5. `heddle_edge_snapshot_capture` (`capture_snapshot`) — when impact/reverify
+2. `warpline_change_list` (`changed`) — **call first**; read its `next_actions`.
+3. `warpline_reverify_worklist_get` (`reverify`) — the worklist to recheck.
+4. `warpline_impact_radius_get` / `warpline_entity_timeline_get` — for explanation.
+5. `warpline_edge_snapshot_capture` (`capture_snapshot`) — when impact/reverify
    reports `NO_SNAPSHOT` and loomweave is available.
 
 ## MCP tools
@@ -94,12 +94,12 @@ schema + data.
 
 | Endorsed name | Shim | Schema | Role |
 | --- | --- | --- | --- |
-| `heddle_change_list` | `changed` | `heddle.change_list.v1` | Changed entities for a rev range; hands back ready-to-call next actions. |
-| `heddle_entity_timeline_get` | `timeline` | `heddle.entity_timeline.v1` | Ordered change history for one entity; reports `sei_resolution` only, never lineage. |
-| `heddle_entity_churn_count_get` | `churn` | `heddle.entity_churn_count.v1` | Per-entity change-event counts; a never-observed entity is `churn_count: 0`. |
-| `heddle_impact_radius_get` | `blast_radius` | `heddle.impact_radius.v1` | Downstream affected set with mandatory `completeness` + `staleness`. |
-| `heddle_reverify_worklist_get` | `reverify` | `heddle.reverify_worklist.v1` | The agent worklist to recheck before claiming completion. |
-| `heddle_edge_snapshot_capture` | `capture_snapshot` | `heddle.edge_snapshot.v1` | The only mutating tool; captures dated loomweave edges into `.weft/heddle/`. |
+| `warpline_change_list` | `changed` | `warpline.change_list.v1` | Changed entities for a rev range; hands back ready-to-call next actions. |
+| `warpline_entity_timeline_get` | `timeline` | `warpline.entity_timeline.v1` | Ordered change history for one entity; reports `sei_resolution` only, never lineage. |
+| `warpline_entity_churn_count_get` | `churn` | `warpline.entity_churn_count.v1` | Per-entity change-event counts; a never-observed entity is `churn_count: 0`. |
+| `warpline_impact_radius_get` | `blast_radius` | `warpline.impact_radius.v1` | Downstream affected set with mandatory `completeness` + `staleness`. |
+| `warpline_reverify_worklist_get` | `reverify` | `warpline.reverify_worklist.v1` | The agent worklist to recheck before claiming completion. |
+| `warpline_edge_snapshot_capture` | `capture_snapshot` | `warpline.edge_snapshot.v1` | The only mutating tool; captures dated loomweave edges into `.weft/warpline/`. |
 
 ### Response contract
 
@@ -107,7 +107,7 @@ Every outbound tool returns the frozen success envelope:
 
 ```json
 {
-  "schema": "heddle.<contract>.v1",
+  "schema": "warpline.<contract>.v1",
   "ok": true,
   "query": { "repo": "...", "tool": "...", "arguments": {}, "sort": {}, "page": {} },
   "data": { },
@@ -115,7 +115,7 @@ Every outbound tool returns the frozen success envelope:
   "next_actions": {},
   "enrichment": {"sei": "...", "edges": "...", "work": "...",
                   "risk": "...", "governance": "...", "requirements": "..."},
-  "meta": {"producer": {"tool": "heddle", "version": "1.0.0"},
+  "meta": {"producer": {"tool": "warpline", "version": "1.0.0"},
             "local_only": true, "peer_side_effects": []}
 }
 ```
@@ -124,50 +124,50 @@ Every outbound tool returns the frozen success envelope:
   `absent` (peer present, no fact), `unavailable` (peer unreachable) — plus
   `stale | partial | skipped` for `edges`. None of these is ever a transport
   error or an implied clean state.
-- Errors use `heddle.error.v1` with a CLOSED `error_code` set and `retryability`
+- Errors use `warpline.error.v1` with a CLOSED `error_code` set and `retryability`
   of `retry_safe | retry_with_changes | fatal`. Switch on `error_code`, not
   message text.
 - Every entity carries both `locator` and `sei` (`loomweave:eid:...`, opaque —
-  heddle never mints or parses it). `heddle_entity_key_id` is internal and **not**
+  warpline never mints or parses it). `warpline_entity_key_id` is internal and **not**
   a federation key; key on `sei` (preferred) or `locator`.
 
 Full contract: [`docs/federation/contracts.md`](docs/federation/contracts.md)
-and the bundled `heddle-workflow` skill
-([`src/heddle/skills/heddle-workflow/`](src/heddle/skills/heddle-workflow/)).
+and the bundled `warpline-workflow` skill
+([`src/warpline/skills/warpline-workflow/`](src/warpline/skills/warpline-workflow/)).
 
 ## Federation member lifecycle
 
-`heddle install` installs everything by default, or a subset via flags
+`warpline install` installs everything by default, or a subset via flags
 (`--claude-code`, `--codex`, `--claude-md`, `--agents-md`, `--gitignore`,
 `--hooks`, `--session-hook`, `--skills`, `--codex-skills`, `--config`):
 
 | Component | What it does |
 | --- | --- |
-| MCP bindings | Registers heddle in `.mcp.json` (Claude Code) and `~/.codex/config.toml` (Codex), stdio transport. |
-| Hooks | git `post-commit` (fail-soft `heddle ingest-commit`) + Claude `SessionStart` (`heddle session-context`). |
-| Skill | Copies `heddle-workflow` into `.claude/skills/` and `.agents/skills/`. |
-| Instructions | Injects a `heddle:instructions` block into CLAUDE.md / AGENTS.md (foreign blocks preserved). |
-| Config | Writes `.weft/heddle/config.json` + `INSTALL_VERSION`. |
+| MCP bindings | Registers warpline in `.mcp.json` (Claude Code) and `~/.codex/config.toml` (Codex), stdio transport. |
+| Hooks | git `post-commit` (fail-soft `warpline ingest-commit`) + Claude `SessionStart` (`warpline session-context`). |
+| Skill | Copies `warpline-workflow` into `.claude/skills/` and `.agents/skills/`. |
+| Instructions | Injects a `warpline:instructions` block into CLAUDE.md / AGENTS.md (foreign blocks preserved). |
+| Config | Writes `.weft/warpline/config.json` + `INSTALL_VERSION`. |
 
-`heddle doctor` checks all of the above; `heddle doctor --fix` re-applies
+`warpline doctor` checks all of the above; `warpline doctor --fix` re-applies
 anything fixable.
 
 ## Configuration & runtime layout
 
-heddle is local-first; runtime state lives under `.weft/heddle/` and is
+warpline is local-first; runtime state lives under `.weft/warpline/` and is
 git-ignored:
 
 ```text
-.weft/heddle/
-├── heddle.db          # SQLite temporal store (change events, edge snapshots)
+.weft/warpline/
+├── warpline.db          # SQLite temporal store (change events, edge snapshots)
 ├── config.json        # member identity {prefix, name, version}
 ├── INSTALL_VERSION    # schema/version marker
 └── .gitignore         # keeps ephemeral runtime files out of commits
 ```
 
-The loomweave command heddle uses for SEI resolution / edge capture is
-server/project config — set `HEDDLE_LOOMWEAVE_COMMAND` (default `loomweave`); it
-is **not** a public MCP tool argument. `git add -A` never stages a heddle DB.
+The loomweave command warpline uses for SEI resolution / edge capture is
+server/project config — set `WARPLINE_LOOMWEAVE_COMMAND` (default `loomweave`); it
+is **not** a public MCP tool argument. `git add -A` never stages a warpline DB.
 
 ## Development
 
@@ -175,11 +175,11 @@ is **not** a public MCP tool argument. `git add -A` never stages a heddle DB.
 uv run ruff check .          # lint
 uv run mypy                  # strict type-check
 uv run pytest                # test suite
-uv run heddle mcp-smoke --repo . --json          # live stdio MCP smoke
-uv run heddle dogfood-eval --real-member-repo /home/john/lacuna --json
+uv run warpline mcp-smoke --repo . --json          # live stdio MCP smoke
+uv run warpline dogfood-eval --real-member-repo /home/john/lacuna --json
 ```
 
-`heddle dogfood-eval` exercises the real change → reverify loop (synthetic lanes
+`warpline dogfood-eval` exercises the real change → reverify loop (synthetic lanes
 plus a real-member lane against an actual loomweave index) and gates on
 `ready=True`. See [`spike/REPORT.md`](spike/REPORT.md) for the readiness verdict
 and [`CHANGELOG.md`](CHANGELOG.md) for release history.
@@ -189,19 +189,19 @@ and [`CHANGELOG.md`](CHANGELOG.md) for release history.
 | Topic | Where |
 | --- | --- |
 | Federation seam contracts (frozen) | [`docs/federation/contracts.md`](docs/federation/contracts.md) |
-| Agent usage (progressive-disclosure skill) | [`src/heddle/skills/heddle-workflow/`](src/heddle/skills/heddle-workflow/) |
+| Agent usage (progressive-disclosure skill) | [`src/warpline/skills/warpline-workflow/`](src/warpline/skills/warpline-workflow/) |
 | Solution architecture | [`solution-architecture/`](solution-architecture/) |
 | Product workspace (vision, roadmap, PDRs) | [`docs/product/`](docs/product/) |
 | Consumer integration tickets | [`docs/integration/post-admission-consumer-tickets.md`](docs/integration/post-admission-consumer-tickets.md) |
 | Release history | [`CHANGELOG.md`](CHANGELOG.md) |
 
 The authoritative interface-lock specification is hub-owned
-(`2026-06-13-heddle-interface-lock.md` in the weft hub); heddle implements **to**
+(`2026-06-13-warpline-interface-lock.md` in the weft hub); warpline implements **to**
 it and does not edit it.
 
 ## Contributing
 
-heddle implements to a frozen cross-member contract. Changes to a tool's name,
+warpline implements to a frozen cross-member contract. Changes to a tool's name,
 input/output schema, the envelope, or the error/enrichment vocabularies are a
 hub decision — escalate with evidence rather than diverging. Internal changes
 must keep `ruff`, `mypy --strict`, and the full test suite green, and the 14

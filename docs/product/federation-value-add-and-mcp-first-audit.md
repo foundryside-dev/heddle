@@ -1,36 +1,36 @@
-# Federation Value Add and MCP-First Audit - Heddle
+# Federation Value Add and MCP-First Audit - Warpline
 
 Date: 2026-06-13
-Status: Heddle-owned analysis, pre-admission
+Status: Warpline-owned analysis, pre-admission
 
 This audit asks two questions:
 
-1. How each other Weft system can enhance Heddle, and how Heddle can enhance it,
+1. How each other Weft system can enhance Warpline, and how Warpline can enhance it,
    without violating enrich-only federation doctrine.
-2. Whether Heddle's MCP surface is agent-first enough to be a first-class
+2. Whether Warpline's MCP surface is agent-first enough to be a first-class
    federation product.
 
-Verdict: Heddle now has a credible product-candidate core, but the next value
+Verdict: Warpline now has a credible product-candidate core, but the next value
 step is not more raw temporal storage. The next value step is an MCP surface and
-pairwise enrichment model that makes agents prefer Heddle in real member repos.
+pairwise enrichment model that makes agents prefer Warpline in real member repos.
 Any interface friction below is at least P1 because MCP is the primary product
 surface.
 
 ## Interface Endorsement Package
 
 Status: proposed for federation endorsement. If the federation side endorses
-this section, treat these names and shapes as the agreed Heddle interfaces for
-the next implementation slice. Until then, this remains a Heddle-owned proposal.
+this section, treat these names and shapes as the agreed Warpline interfaces for
+the next implementation slice. Until then, this remains a Warpline-owned proposal.
 
-This package does not admit Heddle to the federation, freeze glossary terms, or
-authorize sibling repo changes. It defines the narrow interface Heddle proposes
+This package does not admit Warpline to the federation, freeze glossary terms, or
+authorize sibling repo changes. It defines the narrow interface Warpline proposes
 to expose and consume while preserving Weft doctrine: enrich-only, local-first,
-SEI opaque, no shared runtime, no shared store, no Heddle-owned governance,
+SEI opaque, no shared runtime, no shared store, no Warpline-owned governance,
 work-state, trust, requirements, or current-graph truth.
 
 ### Authority Boundaries
 
-| Domain | Owning member | Heddle behavior |
+| Domain | Owning member | Warpline behavior |
 | --- | --- | --- |
 | Current structure, entity catalog, SEI minting/resolution | Loomweave | Consume and store SEI opaque; capture dated graph snapshots; never claim current graph truth. |
 | Work state, issues, observations, claims, lifecycle | Filigree | Read or propose links; never file, close, claim, or mutate work by default. |
@@ -47,29 +47,29 @@ names remain compatibility shims until glossary freeze.
 
 | Endorsed tool | Compatibility shim | Mutates | Purpose |
 | --- | --- | --- | --- |
-| `heddle_change_list` | `changed` | No | List temporal change facts for a repo and rev range. |
-| `heddle_entity_timeline_get` | `timeline` | No | Return ordered change history for one entity reference. |
-| `heddle_impact_radius_get` | `blast_radius` | No | Return downstream affected entities from dated snapshots. |
-| `heddle_reverify_worklist_get` | `reverify` | No | Return an agent-first worklist for what to reverify. |
-| `heddle_edge_snapshot_capture` | `capture_snapshot` | Yes, local Heddle state only | Capture a dated edge snapshot into `.weft/heddle/`. |
-| `heddle_project_context_get` | none | No | Return Heddle project context, capabilities, contract URIs, and current store status. |
+| `warpline_change_list` | `changed` | No | List temporal change facts for a repo and rev range. |
+| `warpline_entity_timeline_get` | `timeline` | No | Return ordered change history for one entity reference. |
+| `warpline_impact_radius_get` | `blast_radius` | No | Return downstream affected entities from dated snapshots. |
+| `warpline_reverify_worklist_get` | `reverify` | No | Return an agent-first worklist for what to reverify. |
+| `warpline_edge_snapshot_capture` | `capture_snapshot` | Yes, local Warpline state only | Capture a dated edge snapshot into `.weft/warpline/`. |
+| `warpline_project_context_get` | none | No | Return Warpline project context, capabilities, contract URIs, and current store status. |
 
 Tool aliases must return the same `schema` and data contract as the endorsed
 tool name. Agents should prefer the endorsed name when both are present.
 
 ### Common Success Envelope
 
-Every Heddle MCP tool returns `structuredContent` with this envelope. The text
+Every Warpline MCP tool returns `structuredContent` with this envelope. The text
 content may contain the same object serialized as compact JSON for older hosts,
 but agents should not have to parse text to recover the contract.
 
 ```json
 {
-  "schema": "heddle.<contract>.v1",
+  "schema": "warpline.<contract>.v1",
   "ok": true,
   "query": {
     "repo": "/abs/path",
-    "tool": "heddle_change_list",
+    "tool": "warpline_change_list",
     "arguments": {},
     "filters": {},
     "sort": {"by": "changed_at", "order": "asc"},
@@ -87,7 +87,7 @@ but agents should not have to parse text to recover the contract.
     "requirements": "present|absent|unavailable"
   },
   "meta": {
-    "producer": {"tool": "heddle", "version": "0.1.0"},
+    "producer": {"tool": "warpline", "version": "0.1.0"},
     "local_only": true,
     "peer_side_effects": []
   }
@@ -106,7 +106,7 @@ Rules:
 
 ### Common Error Envelope
 
-Heddle should keep JSON-RPC error codes for protocol compatibility, but the
+Warpline should keep JSON-RPC error codes for protocol compatibility, but the
 `error.data` object should be stable and recoverable.
 
 ```json
@@ -114,7 +114,7 @@ Heddle should keep JSON-RPC error codes for protocol compatibility, but the
   "code": -32602,
   "message": "invalid params",
   "data": {
-    "schema": "heddle.error.v1",
+    "schema": "warpline.error.v1",
     "error_code": "invalid_rev_range",
     "rejected_field": "rev_range",
     "retryability": "retry_with_changes",
@@ -146,14 +146,14 @@ Initial `error_code` vocabulary:
 
 ### Common Input Objects
 
-Entity references should not force agents to know Heddle internal database ids.
+Entity references should not force agents to know Warpline internal database ids.
 Tools may still accept `changed_entity_key_ids` for compatibility, but endorsed
 interfaces should prefer `entity_ref` and `changed_refs`.
 
 ```json
 {
   "entity_ref": {
-    "kind": "auto|locator|sei|path|qualname|heddle_entity_key_id",
+    "kind": "auto|locator|sei|path|qualname|warpline_entity_key_id",
     "value": "src/pkg/mod.py::fn"
   }
 }
@@ -195,7 +195,7 @@ List outputs include:
 
 ### Tool Contracts
 
-#### `heddle_change_list`
+#### `warpline_change_list`
 
 Intent: list temporal change facts for a repo and revision range, then hand the
 agent ready-to-call impact/reverify actions.
@@ -232,9 +232,9 @@ Output `data`:
 {
   "items": [
     {
-      "change_id": "heddle:change:...",
+      "change_id": "warpline:change:...",
       "entity": {
-        "heddle_entity_key_id": 1,
+        "warpline_entity_key_id": 1,
         "locator": "python:function:src/pkg/mod.py::fn",
         "sei": null,
         "path": "src/pkg/mod.py"
@@ -246,7 +246,7 @@ Output `data`:
     }
   ],
   "changed_refs": [
-    {"kind": "heddle_entity_key_id", "value": "1"}
+    {"kind": "warpline_entity_key_id", "value": "1"}
   ],
   "page": {"limit": 50, "next_cursor": null, "has_more": false}
 }
@@ -254,10 +254,10 @@ Output `data`:
 
 Required `next_actions`:
 
-- `heddle_reverify_worklist_get`
-- `heddle_impact_radius_get`
+- `warpline_reverify_worklist_get`
+- `warpline_impact_radius_get`
 
-#### `heddle_entity_timeline_get`
+#### `warpline_entity_timeline_get`
 
 Intent: return the ordered temporal history for one entity reference.
 
@@ -295,9 +295,9 @@ Output `data`:
 }
 ```
 
-#### `heddle_impact_radius_get`
+#### `warpline_impact_radius_get`
 
-Intent: return affected downstream entities from Heddle's dated snapshots,
+Intent: return affected downstream entities from Warpline's dated snapshots,
 without claiming current graph truth.
 
 Input:
@@ -343,7 +343,7 @@ Output `data`:
 }
 ```
 
-#### `heddle_reverify_worklist_get`
+#### `warpline_reverify_worklist_get`
 
 Intent: return the flagship agent worklist: what to reverify, why, how stale or
 complete the evidence is, and which sibling facts enriched the recommendation.
@@ -404,10 +404,10 @@ Output `data`:
 }
 ```
 
-#### `heddle_edge_snapshot_capture`
+#### `warpline_edge_snapshot_capture`
 
-Intent: capture a dated snapshot of Loomweave edges into Heddle's local state.
-This is the only endorsed mutating tool, and it mutates only `.weft/heddle/`.
+Intent: capture a dated snapshot of Loomweave edges into Warpline's local state.
+This is the only endorsed mutating tool, and it mutates only `.weft/warpline/`.
 
 Input:
 
@@ -441,12 +441,12 @@ Output `data`:
 ```
 
 Idempotency contract: repeated calls for the same repo, commit, mode, and
-effective entity set must return `already_current` or replace the local Heddle
+effective entity set must return `already_current` or replace the local Warpline
 snapshot atomically without mutating siblings.
 
-#### `heddle_project_context_get`
+#### `warpline_project_context_get`
 
-Intent: let an agent discover Heddle's local project state and contract
+Intent: let an agent discover Warpline's local project state and contract
 resources before calling task tools.
 
 Input:
@@ -462,13 +462,13 @@ Output `data`:
 
 ```json
 {
-  "store": {"path": ".weft/heddle/heddle.db", "schema_version": 1},
+  "store": {"path": ".weft/warpline/warpline.db", "schema_version": 1},
   "capabilities": [
-    {"name": "heddle_change_list", "mutates": false, "local_only": true}
+    {"name": "warpline_change_list", "mutates": false, "local_only": true}
   ],
   "contract_resources": [
-    "heddle://contracts/heddle.change_list.v1",
-    "heddle://contracts/heddle.reverify_worklist.v1"
+    "warpline://contracts/warpline.change_list.v1",
+    "warpline://contracts/warpline.reverify_worklist.v1"
   ],
   "peer_status": {
     "loomweave": "available|unavailable|unknown",
@@ -484,13 +484,13 @@ Output `data`:
 
 Endorsed resources:
 
-- `heddle://project/context`
-- `heddle://contracts/heddle.error.v1`
-- `heddle://contracts/heddle.change_list.v1`
-- `heddle://contracts/heddle.entity_timeline.v1`
-- `heddle://contracts/heddle.impact_radius.v1`
-- `heddle://contracts/heddle.reverify_worklist.v1`
-- `heddle://contracts/heddle.edge_snapshot.v1`
+- `warpline://project/context`
+- `warpline://contracts/warpline.error.v1`
+- `warpline://contracts/warpline.change_list.v1`
+- `warpline://contracts/warpline.entity_timeline.v1`
+- `warpline://contracts/warpline.impact_radius.v1`
+- `warpline://contracts/warpline.reverify_worklist.v1`
+- `warpline://contracts/warpline.edge_snapshot.v1`
 
 Resources are read-only and local. They document contract shapes; they do not
 act as a registry or shared runtime.
@@ -500,35 +500,35 @@ act as a registry or shared runtime.
 These are the proposed pairwise interfaces to endorse. Each is optional and
 enrich-only.
 
-| Pair | Heddle consumes | Heddle exposes | Degradation rule |
+| Pair | Warpline consumes | Warpline exposes | Degradation rule |
 | --- | --- | --- | --- |
-| Loomweave + Heddle | `entity_resolve`, `entity_neighborhood_get`, current locator/SEI facts | `heddle.edge_snapshot.v1`, `heddle.entity_temporal_summary.v1` | If Loomweave is absent, Heddle returns locator-keyed facts with `sei=unavailable`, `edges=unavailable` or `SKIPPED`. |
-| Filigree + Heddle | Entity associations, issue/work status, reconciliation feed | `heddle.reverify_worklist.v1` candidate work context and optional `next_actions.filigree` | If Filigree is absent, Heddle omits work enrichment and never auto-files work. |
-| Wardline + Heddle | Finding/risk facts, suppression state, taint/trust-boundary context | `heddle.affected_scope.v1` for scoped scan hints | If Wardline is absent, Heddle says `risk=unavailable`; it never treats absence as clean. |
-| Legis + Heddle | `git_rename_list` / rename feed, branch/commit/PR/governance context | `heddle.preflight_impact.v1` advisory affected-set facts | If Legis is absent, Heddle uses raw git history and marks governance enrichment unavailable. |
-| Charter + Heddle | Requirement links, verification freshness, baseline exposure | `heddle.obligation_impact_context.v1` advisory impacted obligations | If Charter is absent, Heddle omits requirement enrichment and never emits readiness verdicts. |
-| Lacuna + Heddle | Seeded demo changes, real-member parity benchmark, and tour cases | Dogfood/demo results only | If Lacuna drifts, dogfood must either find another real code-change worklist or fail ready; synthetic cases are smoke coverage only. |
+| Loomweave + Warpline | `entity_resolve`, `entity_neighborhood_get`, current locator/SEI facts | `warpline.edge_snapshot.v1`, `warpline.entity_temporal_summary.v1` | If Loomweave is absent, Warpline returns locator-keyed facts with `sei=unavailable`, `edges=unavailable` or `SKIPPED`. |
+| Filigree + Warpline | Entity associations, issue/work status, reconciliation feed | `warpline.reverify_worklist.v1` candidate work context and optional `next_actions.filigree` | If Filigree is absent, Warpline omits work enrichment and never auto-files work. |
+| Wardline + Warpline | Finding/risk facts, suppression state, taint/trust-boundary context | `warpline.affected_scope.v1` for scoped scan hints | If Wardline is absent, Warpline says `risk=unavailable`; it never treats absence as clean. |
+| Legis + Warpline | `git_rename_list` / rename feed, branch/commit/PR/governance context | `warpline.preflight_impact.v1` advisory affected-set facts | If Legis is absent, Warpline uses raw git history and marks governance enrichment unavailable. |
+| Charter + Warpline | Requirement links, verification freshness, baseline exposure | `warpline.obligation_impact_context.v1` advisory impacted obligations | If Charter is absent, Warpline omits requirement enrichment and never emits readiness verdicts. |
+| Lacuna + Warpline | Seeded demo changes, real-member parity benchmark, and tour cases | Dogfood/demo results only | If Lacuna drifts, dogfood must either find another real code-change worklist or fail ready; synthetic cases are smoke coverage only. |
 
 Proposed payload names:
 
-- `heddle.entity_temporal_summary.v1` - per-entity churn, recent changes,
+- `warpline.entity_temporal_summary.v1` - per-entity churn, recent changes,
   last-touched actor/time, and snapshot staleness.
-- `heddle.affected_scope.v1` - changed and affected entity refs with
+- `warpline.affected_scope.v1` - changed and affected entity refs with
   completeness/staleness for peer scoping.
-- `heddle.preflight_impact.v1` - advisory impacted entities for governance
+- `warpline.preflight_impact.v1` - advisory impacted entities for governance
   context.
-- `heddle.obligation_impact_context.v1` - advisory impacted entities grouped by
+- `warpline.obligation_impact_context.v1` - advisory impacted entities grouped by
   Charter requirement ids.
 
 ### Endorsement Checklist
 
 Federation endorsement should confirm:
 
-- Heddle owns only temporal change facts and dated edge snapshots.
+- Warpline owns only temporal change facts and dated edge snapshots.
 - Endorsed MCP names are acceptable in a multi-server tool list.
 - The compatibility shims may remain until glossary freeze.
 - The common envelope, error envelope, entity refs, list controls, and resource
-  URIs are acceptable as Heddle's contract family.
+  URIs are acceptable as Warpline's contract family.
 - Pairwise payloads are enrich-only and do not require sibling presence.
 - Sibling-side work remains post-admission or separately approved.
 
@@ -536,17 +536,17 @@ Federation endorsement should confirm:
 
 ### Loomweave
 
-Loomweave enhances Heddle by supplying stable identity and current structural
+Loomweave enhances Warpline by supplying stable identity and current structural
 truth: locator to SEI resolution, entity lineage, current neighborhoods, source
-context, summaries, and graph shape. Heddle should treat all of that as dated
+context, summaries, and graph shape. Warpline should treat all of that as dated
 enrichment and store only the temporal facts it owns.
 
-Heddle enhances Loomweave by adding time: high-churn entities, recently changed
+Warpline enhances Loomweave by adding time: high-churn entities, recently changed
 entities, stale snapshots, dated graph deltas, and "this entity changed recently
 and its downstream callers were affected" context inside Loomweave entity
 briefings.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Add batch capture and refresh controls around Loomweave neighborhoods, with
   completeness, staleness, truncation, and failure reasons preserved per entity.
@@ -557,28 +557,28 @@ Heddle-side changes:
 
 Loomweave-side changes after admission:
 
-- Consume Heddle for `entity_high_churn_list` and `entity_recent_change_list`
+- Consume Warpline for `entity_high_churn_list` and `entity_recent_change_list`
   rather than deriving recency from only current graph state.
-- Add a Heddle-backed temporal panel in entity orientation packs.
-- Keep Loomweave as identity/current-graph authority; Heddle facts must be
+- Add a Warpline-backed temporal panel in entity orientation packs.
+- Keep Loomweave as identity/current-graph authority; Warpline facts must be
   clearly marked dated and advisory.
 
-Priority: P1. This is the most natural first federation uplift because Heddle's
+Priority: P1. This is the most natural first federation uplift because Warpline's
 real-member dogfood lane now proves dated-edge capture through actual Loomweave
 MCP.
 
 ### Filigree
 
-Filigree enhances Heddle by supplying work context: which issue, observation,
+Filigree enhances Warpline by supplying work context: which issue, observation,
 plan, claim, or finding is already attached to a changed entity. That lets
-Heddle distinguish "reverify this changed code" from "reverify this changed
+Warpline distinguish "reverify this changed code" from "reverify this changed
 code because it closes a claimed P1 and has linked observations."
 
-Heddle enhances Filigree by generating reverify worklists from actual temporal
+Warpline enhances Filigree by generating reverify worklists from actual temporal
 impact instead of manual issue notes. It can propose observations, issue links,
 or closure checklist items, but should not file or mutate work by default.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Read Filigree entity associations and reconciliation changes when available.
 - Add work-state enrichment to `reverify`: linked issue ids, issue status,
@@ -588,10 +588,10 @@ Heddle-side changes:
 
 Filigree-side changes after admission:
 
-- Consume Heddle reverify worklists as optional observations or closure-check
+- Consume Warpline reverify worklists as optional observations or closure-check
   evidence after an explicit user action.
 - Add "changed since issue was claimed/closed" filters for issue lists.
-- Preserve Filigree as work-state authority; Heddle only supplies temporal
+- Preserve Filigree as work-state authority; Warpline only supplies temporal
   impact facts.
 
 Priority: P1. This makes federation membership visibly better for agents doing
@@ -599,16 +599,16 @@ real work, not only code analysis.
 
 ### Wardline
 
-Wardline enhances Heddle by supplying trust/risk context: active findings,
+Wardline enhances Warpline by supplying trust/risk context: active findings,
 suppression state, taint facts, trust-boundary decorators, and whether a changed
-entity sits on a sensitive boundary. That lets Heddle sort and explain reverify
+entity sits on a sensitive boundary. That lets Warpline sort and explain reverify
 work by risk instead of graph distance alone.
 
-Heddle enhances Wardline by giving it a precise affected set for scoped rescans,
+Warpline enhances Wardline by giving it a precise affected set for scoped rescans,
 baseline freshness checks, and "which trust finding might have been invalidated
 by this change" prompts.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Add optional Wardline enrichment to `reverify`: active findings, suppression
   state, taint-boundary facts, and trust-boundary proximity.
@@ -618,25 +618,25 @@ Heddle-side changes:
 
 Wardline-side changes after admission:
 
-- Accept Heddle affected sets as scoped scan hints.
-- Report when a scan was Heddle-scoped and include Heddle completeness/staleness
+- Accept Warpline affected sets as scoped scan hints.
+- Report when a scan was Warpline-scoped and include Warpline completeness/staleness
   in the scan result metadata.
 - Keep full scan as the authoritative fallback.
 
-Priority: P1. Without this, Heddle's worklists are useful but not yet
+Priority: P1. Without this, Warpline's worklists are useful but not yet
 risk-sensitive.
 
 ### Legis
 
-Legis enhances Heddle by supplying governance and git/CI provenance: approved
+Legis enhances Warpline by supplying governance and git/CI provenance: approved
 rev ranges, rename feeds, branch/commit/PR state, signoff binding, override
 state, and whether a change is operating under a protected policy cell.
 
-Heddle enhances Legis by supplying advisory impacted entities and stale
+Warpline enhances Legis by supplying advisory impacted entities and stale
 verification context for preflight or signoff review. Legis should never let
-Heddle decide a governance verdict.
+Warpline decide a governance verdict.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Consume Legis rename feeds so `timeline` and `changed` stay stable across
   common file moves.
@@ -647,8 +647,8 @@ Heddle-side changes:
 
 Legis-side changes after admission:
 
-- Read Heddle affected-set summaries as advisory preflight facts.
-- Show Heddle completeness/staleness next to identity gaps and lineage integrity.
+- Read Warpline affected-set summaries as advisory preflight facts.
+- Show Warpline completeness/staleness next to identity gaps and lineage integrity.
 - Preserve Legis as the only governance authority.
 
 Priority: P1 for rename/provenance consumption; P2 for deeper preflight
@@ -656,27 +656,27 @@ composition.
 
 ### Charter
 
-Charter enhances Heddle by supplying obligation context: requirements linked to
+Charter enhances Warpline by supplying obligation context: requirements linked to
 changed or affected entities, verification freshness, stale evidence, baseline
 drift, and accepted trace links.
 
-Heddle enhances Charter by supplying temporal affected sets that help Charter
+Warpline enhances Charter by supplying temporal affected sets that help Charter
 answer "which obligations might this change touch?" without requiring a full
 manual trace walk.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Add optional Charter enrichment to `reverify`: requirement ids, verification
   freshness, baseline exposure, and obligation severity.
 - Add filters for `requirement_id`, `verification_state`, and
   `baseline_exposure`.
-- Keep Charter facts as obligation context only; Heddle must not produce a
+- Keep Charter facts as obligation context only; Warpline must not produce a
   release-readiness verdict.
 
 Charter-side changes after admission:
 
-- Consume Heddle affected entities in requirement dossiers and impact analysis.
-- Include Heddle completeness/staleness in obligation impact reports.
+- Consume Warpline affected entities in requirement dossiers and impact analysis.
+- Include Warpline completeness/staleness in obligation impact reports.
 - Preserve Charter as requirements and verification authority.
 
 Priority: P2 until Charter's federation adapters are live, then P1 because this
@@ -684,25 +684,25 @@ is a strong pair-mode story.
 
 ### Lacuna
 
-Lacuna is the demo specimen, not a domain authority. It enhances Heddle by
+Lacuna is the demo specimen, not a domain authority. It enhances Warpline by
 providing a stable seeded corpus for dogfood and federation demos.
 
-Heddle enhances Lacuna by adding a temporal-impact lane to the tour: changed
+Warpline enhances Lacuna by adding a temporal-impact lane to the tour: changed
 entity, affected entity, linked finding/work/governance context, and reverify
 recommendation.
 
-Heddle-side changes:
+Warpline-side changes:
 
 - Keep Lacuna in `dogfood-eval` as the real-member readiness lane: executed
   baseline, actual Loomweave snapshot capture, and non-empty MCP reverify
   output.
-- Keep synthetic cases as smoke coverage for the Heddle-owned graph contract;
+- Keep synthetic cases as smoke coverage for the Warpline-owned graph contract;
   they must not be the release gate by themselves.
 
 Lacuna-side changes after admission:
 
-- Add Heddle to the generated matrix and tour explainers.
-- Seed one or two history-dependent examples where Heddle is visibly better
+- Add Warpline to the generated matrix and tour explainers.
+- Seed one or two history-dependent examples where Warpline is visibly better
   than grep or current graph inspection.
 
 Priority: P2. It is valuable for proof and sales, not for core authority.
@@ -710,14 +710,14 @@ Priority: P2. It is valuable for proof and sales, not for core authority.
 ### Shuttle or a Future Codeweave-Style Execution Member
 
 Shuttle is currently speculative and not a member. If a change-execution product
-such as Shuttle or Codeweave becomes real, Heddle should not pre-bind to it.
+such as Shuttle or Codeweave becomes real, Warpline should not pre-bind to it.
 
-That future product would enhance Heddle by supplying execution records: planned
-edits, applied hunks, rollback points, and post-check results. Heddle would then
+That future product would enhance Warpline by supplying execution records: planned
+edits, applied hunks, rollback points, and post-check results. Warpline would then
 be able to explain not only what changed in git, but what an execution agent
 attempted and how that maps to later impact.
 
-Heddle would enhance the execution product by supplying impact boundaries before
+Warpline would enhance the execution product by supplying impact boundaries before
 and after changes: likely affected entities, stale snapshots, and reverify
 worklists before a change is considered complete.
 
@@ -740,7 +740,7 @@ Peer pattern observed:
   rich descriptions, structured envelopes, guards, and workflow-specific
   recovery paths.
 
-Heddle's current names (`changed`, `timeline`, `blast_radius`, `reverify`,
+Warpline's current names (`changed`, `timeline`, `blast_radius`, `reverify`,
 `capture_snapshot`) are concise, but they are under-namespaced in a multi-server
 agent context and inconsistent with the strongest federation naming pattern.
 
@@ -749,11 +749,11 @@ as compatibility shims until glossary freeze:
 
 | Current | Preferred alias | Reason |
 | --- | --- | --- |
-| `changed` | `heddle_change_list` | List temporal change facts; avoids adjective-as-verb ambiguity. |
-| `timeline` | `heddle_entity_timeline_get` | Returns timeline for one entity. |
-| `blast_radius` | `heddle_impact_radius_get` | "Impact" is clearer to agents than metaphorical "blast". |
-| `reverify` | `heddle_reverify_worklist_get` | Names the returned artifact. |
-| `capture_snapshot` | `heddle_edge_snapshot_capture` | Mutating local capture over dated edges. |
+| `changed` | `warpline_change_list` | List temporal change facts; avoids adjective-as-verb ambiguity. |
+| `timeline` | `warpline_entity_timeline_get` | Returns timeline for one entity. |
+| `blast_radius` | `warpline_impact_radius_get` | "Impact" is clearer to agents than metaphorical "blast". |
+| `reverify` | `warpline_reverify_worklist_get` | Names the returned artifact. |
+| `capture_snapshot` | `warpline_edge_snapshot_capture` | Mutating local capture over dated edges. |
 
 Priority: P1. The current names pass dogfood, but federation cohabitation will
 put them beside many peer tools. Ambiguous verbs are agent friction.
@@ -779,7 +779,7 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
    to call next, and how degraded states should be interpreted. Namespaced
    aliases and specific output schemas remain the larger contract-refactor work.
 
-5. Partially resolved - core recoverable errors now use `heddle.error.v1` with
+5. Partially resolved - core recoverable errors now use `warpline.error.v1` with
    stable `error_code`, `retryability`, `hint`, and rejected-field data where
    applicable. A broader federation-wide error taxonomy is still needed before
    glossary freeze.
@@ -788,7 +788,7 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
    agent workflow.
    The happy path works because `changed.next_actions.reverify.arguments`
    carries ids forward, but agents entering from paths, locators, SEIs, or
-   prior tool output need first-class inputs that do not require knowing Heddle
+   prior tool output need first-class inputs that do not require knowing Warpline
    internals.
 
 7. Resolved for current tools - live `tools/list` metadata now declares
@@ -796,9 +796,9 @@ put them beside many peer tools. Ambiguous verbs are agent friction.
    requirement, and federation dependencies.
 
 8. P2 - MCP resources are missing.
-   Contract resources like `heddle://contracts/heddle.change_list.v1`,
-   `heddle://contracts/heddle.reverify_worklist.v1`, and
-   `heddle://project/context` would reduce pressure on tool descriptions.
+   Contract resources like `warpline://contracts/warpline.change_list.v1`,
+   `warpline://contracts/warpline.reverify_worklist.v1`, and
+   `warpline://project/context` would reduce pressure on tool descriptions.
 
 ### Tool-by-tool audit
 
@@ -819,7 +819,7 @@ MCP gaps:
   recoverable invalid-revision error or expose safer common modes like
   `base_ref` plus `head_ref`.
 
-Recommended next shape: `heddle_change_list(repo, rev_range, filters, sort,
+Recommended next shape: `warpline_change_list(repo, rev_range, filters, sort,
 limit, cursor, include_next_actions=true)`.
 
 #### `timeline`
@@ -836,7 +836,7 @@ MCP gaps:
   entity's downstream dependents."
 
 Recommended next shape:
-`heddle_entity_timeline_get(repo, entity_ref, ref_kind=auto|locator|sei|path,
+`warpline_entity_timeline_get(repo, entity_ref, ref_kind=auto|locator|sei|path,
 filters, sort_by=changed_at, sort_order=asc|desc, limit, cursor)`.
 
 #### `blast_radius`
@@ -856,7 +856,7 @@ MCP gaps:
   not separately bounded.
 
 Recommended next shape:
-`heddle_impact_radius_get(repo, changed_refs|changed_entity_key_ids|rev_range,
+`warpline_impact_radius_get(repo, changed_refs|changed_entity_key_ids|rev_range,
 depth, filters, sort_by=depth, limit, cursor)`.
 
 #### `reverify`
@@ -875,14 +875,14 @@ MCP gaps:
 - P1: no stable grouping option such as `group_by=entity|file|requirement|issue`.
 
 Recommended next shape:
-`heddle_reverify_worklist_get(repo, changed_refs|rev_range|changed_result,
+`warpline_reverify_worklist_get(repo, changed_refs|rev_range|changed_result,
 filters, sort, group_by, limit, cursor, include_federation=true)`.
 
 #### `capture_snapshot`
 
 Current strength: it is local-only, never mutates sibling repos, and degrades to
 `SKIPPED` when Loomweave is unavailable. Live `tools/list` now advertises that
-the tool is not read-only, writes only local Heddle state, depends on
+the tool is not read-only, writes only local Warpline state, depends on
 Loomweave, and uses a single-writer concurrency posture.
 
 MCP gaps:
@@ -898,7 +898,7 @@ MCP gaps:
   same commit.
 
 Recommended next shape:
-`heddle_edge_snapshot_capture(repo, commit, mode=full|changed_only,
+`warpline_edge_snapshot_capture(repo, commit, mode=full|changed_only,
 if_stale_after, max_entities, idempotency_key, dry_run=false)`.
 
 ## Recommended Product Slices
@@ -924,7 +924,7 @@ Acceptance:
 
 Priority: P1.
 
-Compose Heddle with Loomweave, Wardline, Filigree, and Legis where available to
+Compose Warpline with Loomweave, Wardline, Filigree, and Legis where available to
 sort and explain reverify worklists by impact, risk, work state, and governance
 context. Missing peers must produce explicit unavailable enrichment.
 
@@ -938,13 +938,13 @@ Acceptance:
 
 Priority: P2 until Charter adapters are live, then P1.
 
-Add Charter requirement and verification freshness enrichment to Heddle reverify
+Add Charter requirement and verification freshness enrichment to Warpline reverify
 and affected-set outputs.
 
 Acceptance:
 
 - Requirement ids and verification states appear only when Charter supplies them.
-- Heddle never emits release-readiness or requirement-satisfaction verdicts.
+- Warpline never emits release-readiness or requirement-satisfaction verdicts.
 
 ### Slice 4 - Demo and dogfood expansion
 
@@ -956,16 +956,16 @@ refactor lands.
 Acceptance:
 
 - The release gate keeps at least one real-member benchmark with executed
-  baseline, actual sibling MCP integration, and non-empty Heddle reverify
+  baseline, actual sibling MCP integration, and non-empty Warpline reverify
   output.
-- Additional Lacuna dogfood demonstrates pairwise Heddle uplift stories for
+- Additional Lacuna dogfood demonstrates pairwise Warpline uplift stories for
   Wardline, Filigree, and Legis after those interfaces are endorsed.
 
 ## Bottom Line
 
-Heddle's federation value is strongest when it acts as the temporal connective
+Warpline's federation value is strongest when it acts as the temporal connective
 tissue: it tells agents what changed over time, what dated graph facts imply,
-and what to reverify next. The next gating concern is not whether Heddle has a
+and what to reverify next. The next gating concern is not whether Warpline has a
 temporal store. It does. The concern is whether the MCP surface is as deliberate
 as the product claim. Today it is usable and dogfood-passing, but not yet as
 structured, filterable, sortable, recoverable, and verb-consistent as a first

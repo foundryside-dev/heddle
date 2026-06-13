@@ -7,7 +7,7 @@ REQUIRED_SOURCES = [
     "/home/john/weft/doctrine.md",
     "/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md",
     "/home/john/weft/federation-sdk.md",
-    "/home/john/weft/members/heddle.md",
+    "/home/john/weft/members/warpline.md",
     "/home/john/loomweave/README.md",
     "/home/john/loomweave/crates/loomweave-mcp/src/lib.rs",
     "/home/john/loomweave/crates/loomweave-cli/src/cli.rs",

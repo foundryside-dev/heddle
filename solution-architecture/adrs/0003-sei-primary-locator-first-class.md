@@ -2,7 +2,7 @@
 
 **Status:** Proposed (spike Q4 measures the lossiness) · 2026-06-10
 **Context:** The concept keys history on SEI — but SEI is minted by Loomweave,
-and doctrine §5 forbids Heddle's semantics from requiring a sibling. A
+and doctrine §5 forbids Warpline's semantics from requiring a sibling. A
 SEI-only design would be load-bearing on Loomweave (failure modes 1 and 2 of
 the §5 test) and would have no solo story (§7 Q2).
 
@@ -12,13 +12,13 @@ catalog is readable, and can retroactively *upgrade* locator-keyed history when
 a catalog appears later — recorded as lineage, never rewriting events. Locator
 mode is a first-class mode, not an error path. The SEI scheme itself
 (`loomweave:eid:...`) is consumed as a frozen opaque string (CON-TEC-01) —
-Heddle never parses, mints, or extends it.
+Warpline never parses, mints, or extends it.
 
 **Alternatives considered:**
 - *SEI-only* — rejected: load-bearing coupling; no solo mode.
 - *Locator-only* — rejected: renames/moves shred history continuity, and the
   whole pairwise story with every sibling keys on SEI.
-- *Heddle-minted identity* — rejected hard: a second identity scheme is the
+- *Warpline-minted identity* — rejected hard: a second identity scheme is the
   identity-reconciliation-service anti-goal (doctrine §6) and re-litigates the
   LOCKED standard.
 

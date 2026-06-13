@@ -1,14 +1,14 @@
 # Integration Plan
 
-Greenfield system, brownfield *ecosystem*: Heddle touches no sibling's code,
+Greenfield system, brownfield *ecosystem*: Warpline touches no sibling's code,
 but it reads two external surfaces and (post-launch) is read by four. Every
 integration below is enrich-only in BOTH directions by construction.
 
 ## Phase 0 — spike (now, pre-cutover; CON-TEC-02 in force)
 | Seam | Direction | Contract | Reality check |
 |------|-----------|----------|---------------|
-| Git repo | Heddle ← git | `git log` / `git diff` plumbing; post-commit hook installed by `heddle init` in the *analyzed* repo (the hook is Heddle's file, not a member change) | stable, versioned, the one hard dependency |
-| Loomweave read surface | Heddle ← loomweave (OPTIONAL) | `[ASSUMED]` a published catalog/edge read surface exists and is sufficient — **spike Q1 verifies against loomweave source, not docs** (suite docs are known-drifted) | THE open integration risk (RSK-02); if no sufficient surface exists, the options are wait-for-cutover or no-go — NOT a member-side change |
+| Git repo | Warpline ← git | `git log` / `git diff` plumbing; post-commit hook installed by `warpline init` in the *analyzed* repo (the hook is Warpline's file, not a member change) | stable, versioned, the one hard dependency |
+| Loomweave read surface | Warpline ← loomweave (OPTIONAL) | `[ASSUMED]` a published catalog/edge read surface exists and is sufficient — **spike Q1 verifies against loomweave source, not docs** (suite docs are known-drifted) | THE open integration risk (RSK-02); if no sufficient surface exists, the options are wait-for-cutover or no-go — NOT a member-side change |
 
 Spike-phase rule: if any Phase-0 step turns out to need a diff inside
 filigree/wardline/legis/loomweave, the step stops and the finding goes in the
@@ -17,7 +17,7 @@ spike report as a constraint conflict. No exceptions, no "tiny" patches.
 ## Phase 1 — post-cutover, post-go, post-admission (all three required)
 Each consumer seam is a ticket in THAT member's tracker, counterparted to the
 hub per convention; each is that member's choice to adopt, on its own release
-line. Heddle never requires any of them (doctrine §5).
+line. Warpline never requires any of them (doctrine §5).
 
 | Consumer | Pull | Coherent pair story without others |
 |----------|------|-------------------------------------|
@@ -34,5 +34,5 @@ lesson the current launch is paying for.
 ## Failure modes at the seams (designed responses)
 - Loomweave surface unreadable mid-ingest → snapshot recorded as `SKIPPED(reason)`, ingest continues locator-keyed; next successful read upgrades (ADR-0003).
 - Loomweave schema/version drift → version probe on every read; mismatch = `SKIPPED(version_mismatch)`, surfaced on next query — never a crash, never a guess.
-- Hook failure → exit 0 always; failure logged in-store, surfaced on next query (`11-` I2). A broken Heddle must never block a commit.
+- Hook failure → exit 0 always; failure logged in-store, surfaced on next query (`11-` I2). A broken Warpline must never block a commit.
 - Stale snapshots → staleness stamp mandatory on every blast-radius answer; thin answers look thin (NFR-06).

@@ -1,4 +1,4 @@
-# Heddle go/no-go spike — brief
+# Warpline go/no-go spike — brief
 
 **Ticket:** `weft-e4589e6570` (weft hub) · **Mandate:** PDR-0013 discovery slot #1
 **Mode:** prove or kill. A "go" is a recommendation to the owner (doctrine §7 —
@@ -30,12 +30,12 @@ re-snapshotting (cost makes it a daemon, doctrine §6).
 
 **Q3 — Doctrine fit (ADR-0004, RSK-01, RSK-03).** Run the §5 failure test and
 §6 checklist against the prototype's actual store and query log: did anything
-mirror sibling state? Did any query answer "now"? Write the Heddle/Charter seam
+mirror sibling state? Did any query answer "now"? Write the Warpline/Charter seam
 section. *Kill if:* the firewall can't hold under real query pressure — agents
 only find it useful when it answers "now"-shaped questions.
 
 **Q4 — The grep test, solo mode (ADR-0003, RSK-04; admission bar (b)).** Give
-agents real tasks on a repo with Heddle available, unprompted, in both modes
+agents real tasks on a repo with Warpline available, unprompted, in both modes
 (SEI-keyed and locator-only). Measure: do they reach for it over grep? Is the
 locator-only mode still preferred?
 *Kill if:* agents ignore it even when SEI-keyed. *Narrow the claim if:* only

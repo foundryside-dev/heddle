@@ -9,12 +9,12 @@ Own-use, local-first; this page is deliberately small.
   (suite convention). Core flows never require anything to be "up"
   (doctrine §6 test).
 - **Install:** single tool install (mechanism mirrors siblings — e.g. `uv tool
-  install` if Python is selected in `05-`). Per-repo activation = `heddle init`
+  install` if Python is selected in `05-`). Per-repo activation = `warpline init`
   (installs the hook, registers the store). NOTE the installed-vs-source drift
   lesson (three source-fixed ≠ live-fixed incidents in the suite): the spike
   prototype runs from source; any installed build must carry a version probe.
 - **Data:** one SQLite DB per analyzed repo under the user data dir
-  (XDG `$XDG_DATA_HOME/heddle/<repo-fingerprint>/`), never inside the analyzed
+  (XDG `$XDG_DATA_HOME/warpline/<repo-fingerprint>/`), never inside the analyzed
   repo's working tree (NFR-05, ADR-0004). Backup = file copy; loss = re-derivable
   by backfill + re-snapshot (nothing here is the system of record for anything
   a sibling owns; git is the recovery source).

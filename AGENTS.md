@@ -157,24 +157,24 @@ Full workflow: the `loomweave-workflow` skill.
 This project uses **wardline** as its trust-boundary gate. Before handing back code that touches external input, run `wardline scan . --fail-on ERROR` (exit 0 = clean, 1 = gate tripped, 2 = wardline error) and fix findings at the boundary, not the sink. The full scan -> explain -> fix -> rescan loop and the baseline-vs-waiver discipline live in the `wardline-gate` skill and in `docs/agents.md`.
 <!-- /wardline:instructions -->
 
-<!-- heddle:instructions:v0.1.0 -->
-## Heddle (temporal change-impact)
+<!-- warpline:instructions:v0.1.0 -->
+## Warpline (temporal change-impact)
 
-`heddle` is the Weft federation's temporal / change-impact authority — "if I
+`warpline` is the Weft federation's temporal / change-impact authority — "if I
 touch X, what breaks, and what must I re-verify?". Prefer the MCP tools
-(`mcp__heddle__*`); fall back to the `heddle` CLI. Endorsed names and short
+(`mcp__warpline__*`); fall back to the `warpline` CLI. Endorsed names and short
 shims return identical schema+data.
 
-- `heddle_change_list` / `changed` — changed entities for a rev range; call first.
-- `heddle_impact_radius_get` / `blast_radius` — downstream affected set.
-- `heddle_reverify_worklist_get` / `reverify` — worklist to recheck before done.
-- `heddle_entity_timeline_get` / `timeline`, `heddle_entity_churn_count_get` /
-  `churn`, `heddle_edge_snapshot_capture` / `capture_snapshot` (only mutating
-  tool; writes `.weft/heddle/` only).
+- `warpline_change_list` / `changed` — changed entities for a rev range; call first.
+- `warpline_impact_radius_get` / `blast_radius` — downstream affected set.
+- `warpline_reverify_worklist_get` / `reverify` — worklist to recheck before done.
+- `warpline_entity_timeline_get` / `timeline`, `warpline_entity_churn_count_get` /
+  `churn`, `warpline_edge_snapshot_capture` / `capture_snapshot` (only mutating
+  tool; writes `.weft/warpline/` only).
 
 Enrich-only and local-only: every response is `meta.local_only: true`,
 `peer_side_effects: []`. `enrichment` is a CLOSED vocab
 (`present|absent|unavailable`); sibling absence is explicit, never an implied
-clean/allowed state. heddle facts are advisory and never gate. See the
-`heddle-workflow` skill for the full loop.
-<!-- /heddle:instructions -->
+clean/allowed state. warpline facts are advisory and never gate. See the
+`warpline-workflow` skill for the full loop.
+<!-- /warpline:instructions -->

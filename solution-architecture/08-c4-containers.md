@@ -4,13 +4,13 @@ One page. Technology labels per container (provisional where `05-` defers).
 
 ```mermaid
 C4Container
-    title Heddle — containers
+    title Warpline — containers
 
     Person(agent, "AI coding agent")
 
-    System_Boundary(heddle, "Heddle (single local install; no daemon)") {
-        Container(cli, "heddle CLI", "language TBD (05-)", "human + script surface; also the hook entrypoint")
-        Container(mcp, "heddle MCP server", "MCP over stdio", "agent-first query surface; same core library as the CLI")
+    System_Boundary(warpline, "Warpline (single local install; no daemon)") {
+        Container(cli, "warpline CLI", "language TBD (05-)", "human + script surface; also the hook entrypoint")
+        Container(mcp, "warpline MCP server", "MCP over stdio", "agent-first query surface; same core library as the CLI")
         Container(core, "core library", "language TBD (05-)", "ingest, identity resolution, snapshot diffing, propagation engine")
         ContainerDb(store, "temporal store", "SQLite (WAL)", "change events, edge snapshots, entity key map — OUTSIDE the analyzed repo tree (XDG data dir)")
     }

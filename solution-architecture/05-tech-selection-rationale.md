@@ -21,7 +21,7 @@
 - **A daemon/watcher**: rejected for core flows — NFR-03 and doctrine §6 ("if it
   must be running for the suite to work, it violates federation"). A *optional*
   convenience watcher may be revisited post-spike; never required.
-- **Member-side emit hooks** ("loomweave pushes change events to heddle"):
+- **Member-side emit hooks** ("loomweave pushes change events to warpline"):
   rejected pre-launch outright (CON-TEC-02) and doctrinally suspect at any time
   (load-bearing coupling risk); the read-side design makes it unnecessary —
   that is exactly spike Q1.

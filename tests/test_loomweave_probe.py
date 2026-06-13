@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from heddle.loomweave import LoomweaveMcpClient, LoomweaveProbe
+from warpline.loomweave import LoomweaveMcpClient, LoomweaveProbe
 
 
 def test_missing_loomweave_degrades_cleanly(tmp_path: Path) -> None:

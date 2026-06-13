@@ -6,9 +6,9 @@
       "env": {},
       "type": "stdio"
     },
-    "heddle": {
+    "warpline": {
       "args": [],
-      "command": "/home/john/.local/bin/heddle-mcp",
+      "command": "/home/john/.local/bin/warpline-mcp",
       "env": {},
       "type": "stdio"
     },

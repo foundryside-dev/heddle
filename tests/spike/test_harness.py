@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heddle.reverify import render_reverify_worklist
+from warpline.reverify import render_reverify_worklist
 
 
 def test_spike_report_has_recommendation_line() -> None:
@@ -35,7 +35,7 @@ def test_spike_harness_does_not_backfill_live_member_repos() -> None:
         "/home/john/legis",
     ):
         assert repo not in script
-    assert "heddle backfill --repo \"$repo\"" not in script
+    assert "warpline backfill --repo \"$repo\"" not in script
 
 
 def test_reverify_worklist_carries_honesty_fields() -> None:

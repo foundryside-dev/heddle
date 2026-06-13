@@ -1,10 +1,10 @@
-# Heddle Spike Report
+# Warpline Spike Report
 
 Readiness verdict: ready
 
-Current readiness verdict as of 2026-06-13: Heddle is product-candidate ready.
+Current readiness verdict as of 2026-06-13: Warpline is product-candidate ready.
 Owner admission, glossary freeze, and sibling-side tickets remain reserved, but
-the Heddle-side product bar is now backed by executable evidence instead of the
+the Warpline-side product bar is now backed by executable evidence instead of the
 earlier bounded spike alone.
 
 Live-review blockers retired in this repo:
@@ -19,16 +19,16 @@ Live-review blockers retired in this repo:
   cases remain smoke coverage only.
 - MCP and federation-bar defects: malformed MCP input and tool exceptions
   degrade recoverably, `initialize` returns protocol/server metadata, tools
-  advertise output schemas, default state is `.weft/heddle/`, the store writes
+  advertise output schemas, default state is `.weft/warpline/`, the store writes
   a nested `.gitignore`, and hostile/undecodable files degrade per file rather
-  than killing the run. `heddle mcp-smoke` also proves a real stdio
+  than killing the run. `warpline mcp-smoke` also proves a real stdio
   initialize/tools/list/changed/bad-input/tools-list survivability path.
 
 ## Q1: Loomweave Read Path
 
 Status: available.
 
-Evidence from `uv run heddle loomweave-probe --repo /home/john/loomweave --json`:
+Evidence from `uv run warpline loomweave-probe --repo /home/john/loomweave --json`:
 
 ```json
 {
@@ -49,11 +49,11 @@ The live tool inventory also includes `entity_high_churn_list` and `entity_recen
 
 ## Q1b: Edge Snapshot Adapter
 
-Unit evidence confirms Heddle preserves caller/callee direction from Loomweave neighborhood payloads. Live evidence confirms `/home/john/loomweave` exposes `entity_neighborhood_get`; Heddle still records dated snapshots only and does not answer current structure as its own authority.
+Unit evidence confirms Warpline preserves caller/callee direction from Loomweave neighborhood payloads. Live evidence confirms `/home/john/loomweave` exposes `entity_neighborhood_get`; Warpline still records dated snapshots only and does not answer current structure as its own authority.
 
 ## Q2: Snapshot Honesty and Planted-Change Results
 
-The spike harness uses a bounded planted git repository for repeatable measurements and live member checks only for lightweight federation surface probes. An earlier unbounded live-member backfill attempt against `/home/john/filigree` exceeded four minutes, so the release harness was refactored to avoid making Heddle harder to operate than current grep/manual workflows.
+The spike harness uses a bounded planted git repository for repeatable measurements and live member checks only for lightweight federation surface probes. An earlier unbounded live-member backfill attempt against `/home/john/filigree` exceeded four minutes, so the release harness was refactored to avoid making Warpline harder to operate than current grep/manual workflows.
 
 Current measured evidence from `spike/measurements.json`:
 
@@ -67,9 +67,9 @@ The planted-change query returned `python:function:planted.py::planted` for `HEA
 
 ## Q3: Doctrine Firewall Checklist
 
-- Heddle imports no sibling packages.
-- Heddle stores temporal change and dated snapshot facts only.
-- Heddle does not own current structure, work state, trust policy, governance, or requirements.
+- Warpline imports no sibling packages.
+- Warpline stores temporal change and dated snapshot facts only.
+- Warpline does not own current structure, work state, trust policy, governance, or requirements.
 - Member dirty state is compared against `docs/evidence/member-dirty-baseline.txt`.
 - Missing graph enrichment produces `NO_SNAPSHOT`, `SKIPPED`, or absent enrichment fields.
 
@@ -77,7 +77,7 @@ The planted-change query returned `python:function:planted.py::planted` for `HEA
 
 The release dogfood path now runs a real-member benchmark instead of relying on
 the planted corpus for parity. It clones `/home/john/lacuna`, copies the live
-Loomweave index, backfills Heddle, runs MCP `capture_snapshot`, selects a
+Loomweave index, backfills Warpline, runs MCP `capture_snapshot`, selects a
 historical code change with non-empty reverify output, executes the baseline
 `git diff --name-only` plus `rg` workflow, then compares MCP `changed ->
 reverify` output against that baseline. The current benchmark uses

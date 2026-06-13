@@ -3,14 +3,14 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from heddle.propagation import blast_radius
-from heddle.store import HeddleStore
+from warpline.propagation import blast_radius
+from warpline.store import WarplineStore
 
 
 def test_blast_radius_returns_no_snapshot_honestly(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         key = store.ensure_entity_key(repo_id, locator="file:a.py", sei=None, commit_sha="c1")
         result = blast_radius(store, repo, [key], depth=2)
@@ -21,7 +21,7 @@ def test_blast_radius_returns_no_snapshot_honestly(tmp_path: Path) -> None:
 def test_blast_radius_walks_downstream(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         a = store.ensure_entity_key(
             repo_id, locator="python:function:a", sei=None, commit_sha="c1"
@@ -62,7 +62,7 @@ def test_blast_radius_reports_snapshot_staleness(tmp_path: Path) -> None:
     (repo / "a.py").write_text("a = 2\n", encoding="utf-8")
     subprocess.run(["git", "commit", "-am", "two"], cwd=repo, check=True)
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         key = store.ensure_entity_key(repo_id, locator="file:a.py", sei=None, commit_sha=first)
         store.create_edge_snapshot(repo_id, first, "loomweave", "test", "FULL")

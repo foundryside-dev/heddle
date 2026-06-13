@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heddle.snapshot import capture_edge_snapshot, record_skipped_snapshot
-from heddle.store import HeddleStore
+from warpline.snapshot import capture_edge_snapshot, record_skipped_snapshot
+from warpline.store import WarplineStore
 
 
 class FakeNeighborhoodClient:
@@ -54,7 +54,7 @@ class LoomweaveIdNeighborhoodClient:
 def test_skipped_snapshot_is_queryable(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         record_skipped_snapshot(store, repo_id, "abc123", reason="no_index")
         snap = store.latest_snapshot(repo)
@@ -69,7 +69,7 @@ def test_capture_edge_snapshot_records_loomweave_edges(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     client = FakeNeighborhoodClient()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         a = store.ensure_entity_key(
             repo_id, locator="python:function:a", sei=None, commit_sha="c1"
@@ -98,11 +98,11 @@ def test_capture_edge_snapshot_records_loomweave_edges(tmp_path: Path) -> None:
     ]
 
 
-def test_capture_edge_snapshot_maps_loomweave_ids_back_to_heddle_keys(tmp_path: Path) -> None:
+def test_capture_edge_snapshot_maps_loomweave_ids_back_to_warpline_keys(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     client = LoomweaveIdNeighborhoodClient()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         changed = store.ensure_entity_key(
             repo_id, locator="python:function:pkg/mod.py::changed", sei=None, commit_sha="c1"
@@ -137,7 +137,7 @@ def test_capture_edge_snapshot_maps_loomweave_ids_back_to_heddle_keys(tmp_path: 
 def test_capture_edge_snapshot_clears_edges_on_recapture(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         a = store.ensure_entity_key(
             repo_id, locator="python:function:a", sei=None, commit_sha="c1"
@@ -175,7 +175,7 @@ def test_capture_edge_snapshot_degrades_truncated_neighborhood_to_delta(
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         store.ensure_entity_key(repo_id, locator="python:function:a", sei=None, commit_sha="c1")
         result = capture_edge_snapshot(

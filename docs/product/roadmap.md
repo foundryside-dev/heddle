@@ -1,4 +1,4 @@
-# Roadmap - Heddle
+# Roadmap - Warpline
 
 Updated: 2026-06-13 (PDR-0001)
 
@@ -12,7 +12,7 @@ Do not compute WSJF here; hand the committed bet over for sequencing.
   in place; admission, glossary freeze, and sibling ticket dispatch remain the
   owner's call.
 - **Evidence freshness** - keep dogfood, productization, lint/type/test, and
-  member-diff gates aligned as Heddle evolves.
+  member-diff gates aligned as Warpline evolves.
 - **MCP operator documentation** - keep README and evidence docs aligned with
   the shipped MCP workflow, smoke command, and remaining P1 contract gaps.
 
@@ -24,12 +24,12 @@ Do not compute WSJF here; hand the committed bet over for sequencing.
   mutability/idempotency metadata are already present for current tools.
 - **Bounded live-repo ingestion strategy** - replace unbounded live-member
   backfill with explicit bounded, incremental, and resumable workflows.
-- **Post-admission consumer package** - turn Heddle-owned draft contracts into
+- **Post-admission consumer package** - turn Warpline-owned draft contracts into
   owner-approved sibling tickets only after admission.
 
 ## Later (directional bets, no order, no dates)
 
-- **Federation conformance oracle inclusion** - add Heddle MCP and JSON fixtures
+- **Federation conformance oracle inclusion** - add Warpline MCP and JSON fixtures
   to the federation contract corpus after glossary clearance.
 - **Richer verification hints** - infer likely test commands from history and
   project metadata without owning work state.

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from heddle.loomweave import LoomweaveProbe
+from warpline.loomweave import LoomweaveProbe
 
 
 def test_live_loomweave_probe_reports_surface() -> None:

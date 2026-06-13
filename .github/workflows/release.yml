@@ -69,7 +69,7 @@ jobs:
           MAX_ATTEMPTS=10
           SLEEP_SECS=30
           for attempt in $(seq 1 $MAX_ATTEMPTS); do
-            if VERSION_OUTPUT=$(uvx --from "heddle==${GITHUB_REF_NAME#v}" heddle --version 2>&1); then
+            if VERSION_OUTPUT=$(uvx --from "warpline==${GITHUB_REF_NAME#v}" warpline --version 2>&1); then
               echo "Installed on attempt $attempt"
               echo "$VERSION_OUTPUT"
               exit 0
@@ -78,7 +78,7 @@ jobs:
             echo "Attempt $attempt/$MAX_ATTEMPTS: package not yet available, waiting ${SLEEP_SECS}s..."
             sleep $SLEEP_SECS
           done
-          echo "::error::Package heddle==${GITHUB_REF_NAME#v} not available on PyPI after $((MAX_ATTEMPTS * SLEEP_SECS))s"
+          echo "::error::Package warpline==${GITHUB_REF_NAME#v} not available on PyPI after $((MAX_ATTEMPTS * SLEEP_SECS))s"
           exit 1
 
   github-release:

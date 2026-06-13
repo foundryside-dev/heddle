@@ -1,15 +1,15 @@
-# Agentic MCP Product Design - Heddle
+# Agentic MCP Product Design - Warpline
 
 Status: product-candidate design bar, pre-admission
 
-Heddle should feel like a first-class Weft federation member and a first-class
+Warpline should feel like a first-class Weft federation member and a first-class
 agentic MCP product. That means an agent can discover the product, understand
 authority boundaries, ask the core questions, and act on the result without
 reading source code, raw SQLite, or sibling-specific tribal knowledge.
 
 MCP deficiencies are P0 product defects. They are not minor polish. If the MCP
 surface is not at least as good as existing tools in solo mode and better with
-federation members, Heddle has no reason to exist. The right response is
+federation members, Warpline has no reason to exist. The right response is
 refactor, not workaround.
 
 ## Agent job
@@ -45,7 +45,7 @@ and should be implemented before glossary freeze.
 - Tool inventory must advertise local-write behavior, idempotency, concurrency,
   touched local paths, repo requirements, and federation dependencies.
 - Every response includes enough metadata to tell what repo, range/entity, and
-  Heddle version produced the answer.
+  Warpline version produced the answer.
 - Every degraded response states the degradation explicitly: `NO_SNAPSHOT`,
   `SKIPPED`, absent SEI, absent edges, stale snapshot, unknown staleness, or a
   structured recoverable error.
@@ -56,29 +56,29 @@ and should be implemented before glossary freeze.
 
 ## Federation product rules
 
-- Heddle is enrich-only. Sibling absence makes answers thinner, not impossible.
-- Heddle is not an aggregator. It stores temporal change-impact facts and dated
+- Warpline is enrich-only. Sibling absence makes answers thinner, not impossible.
+- Warpline is not an aggregator. It stores temporal change-impact facts and dated
   edge snapshots only.
-- Heddle never mints, parses, or owns SEI. It preserves SEI opaquely when
+- Warpline never mints, parses, or owns SEI. It preserves SEI opaquely when
   Loomweave supplies it.
-- Heddle never files work, closes work, waives findings, gates commits, signs
+- Warpline never files work, closes work, waives findings, gates commits, signs
   governance, or decides requirements impact.
-- Draft contracts in this repo are Heddle-owned until owner admission. Sibling
+- Draft contracts in this repo are Warpline-owned until owner admission. Sibling
   products choose whether and how to consume them after admission.
 
 ## First-class Weft federation member bar
 
-Heddle can be argued as a first-class Weft federation member only when:
+Warpline can be argued as a first-class Weft federation member only when:
 
 - solo mode is at least as good as existing tools without siblings
 - pair mode is better with federation members through published sibling
   surfaces only
 - MCP contracts are discoverable and fixture-backed
 - release-candidate gates prove member repo cleanliness
-- admission artifacts separate Heddle-owned facts from sibling-owned authority
-- a dogfood run shows agents choose Heddle over manual grep for impact review
+- admission artifacts separate Warpline-owned facts from sibling-owned authority
+- a dogfood run shows agents choose Warpline over manual grep for impact review
 
-Until then, Heddle is a product candidate with a `go` spike recommendation, not
+Until then, Warpline is a product candidate with a `go` spike recommendation, not
 an admitted member.
 
 ## P0 MCP deficiency examples

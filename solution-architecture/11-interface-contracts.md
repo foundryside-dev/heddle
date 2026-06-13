@@ -41,13 +41,13 @@ an error (NFR-04).
 - **Idempotent:** yes (append-only with commit-sha dedup)
 
 ## I2 — hook ingest (FR-06)
-- **Op:** `ingest-commit <sha>` (installed as git post-commit hook by `heddle init`)
+- **Op:** `ingest-commit <sha>` (installed as git post-commit hook by `warpline init`)
 - **Contract:** synchronous path ≤ NFR-02b budget; edge snapshotting deferred to next query or explicit `snapshot` verb; MUST exit 0 even on internal failure (a broken hook must never block a commit) — failures land in the store's own health log, surfaced on next query
 - **Idempotent:** yes
 
 ## Versioning stance
-Single `heddle_schema_version` in the store + surfaced on every MCP/CLI
+Single `warpline_schema_version` in the store + surfaced on every MCP/CLI
 response. Pre-1.0: schema may break freely (it is a spike). Post-admission:
 follows whatever wire-freeze discipline the federation's conformance oracle
-(GS-7 line) establishes — Heddle would enter the oracle corpus before its
+(GS-7 line) establishes — Warpline would enter the oracle corpus before its
 first frozen release, not after (lesson of the current launch).

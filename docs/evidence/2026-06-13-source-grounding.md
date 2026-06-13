@@ -1,4 +1,4 @@
-# Heddle Source Grounding Evidence
+# Warpline Source Grounding Evidence
 
 ## Productization Gate
 
@@ -11,9 +11,9 @@
 ## Sources Checked
 
 - `/home/john/weft/doctrine.md` - federation doctrine, enrich-only, no shared runtime/store/broker, owner admission test.
-- `/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` - Heddle discovery slot and agentic-first bar.
+- `/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` - Warpline discovery slot and agentic-first bar.
 - `/home/john/weft/federation-sdk.md` - member obligations, SEI opacity, honest degradation.
-- `/home/john/weft/members/heddle.md` - Heddle is design spike; no implementation yet.
+- `/home/john/weft/members/warpline.md` - Warpline is design spike; no implementation yet.
 - `/home/john/loomweave/README.md` - graph/identity authority and live MCP families.
 - `/home/john/loomweave/crates/loomweave-mcp/src/lib.rs` - live MCP tool names.
 - `/home/john/loomweave/crates/loomweave-cli/src/cli.rs` - `analyze`, `serve`, `--legis-url`, `--no-sei`, `--no-incremental`.

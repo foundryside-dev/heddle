@@ -10,15 +10,15 @@ Target metric (metrics.md): Agent impact answer success rate
 Coding agents working in Weft member repos need to decide what changed, what may
 be affected, and what to reverify before they claim work is complete. Today that
 job falls back to manual grep, memory, raw git inspection, or human judgment.
-Heddle has enough implementation to answer the job, but it must be productized
-around the MCP surface because agents experience Heddle primarily through
+Warpline has enough implementation to answer the job, but it must be productized
+around the MCP surface because agents experience Warpline primarily through
 `tools/list` and structured tool calls, not through architecture documents.
 
 ## Success metric
 
 Agent impact answer success rate reaches at least one real-member benchmark
 where an executed existing-tools baseline (`git diff --name-only` plus `rg`)
-matches Heddle MCP changed output, actual Loomweave MCP snapshot capture
+matches Warpline MCP changed output, actual Loomweave MCP snapshot capture
 provides enrichment, and MCP `reverify` returns a non-empty worklist before
 admission recommendation.
 
@@ -36,7 +36,7 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
    refactor plan is opened.
 2. FEDERATION UPLIFT - When federation member enrichment is available, the
    real-member dogfood lane captures a sibling MCP snapshot and returns a
-   non-empty Heddle reverify worklist that existing tools alone do not provide.
+   non-empty Warpline reverify worklist that existing tools alone do not provide.
    Reject branch: If enriched answers are merely equal to existing tools, the
    federation value claim is unproven and the bet is rejected.
 3. MCP STRUCTURE - Every core MCP response includes schema/version, query
@@ -49,18 +49,18 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
    proves structured bad-input recovery. Specific output schemas,
    namespaced aliases, filters/sort, pagination, and resource contracts remain
    the next P1 refactor.
-4. FEDERATION BOUNDARY - Heddle responses identify absent, stale, skipped, or
+4. FEDERATION BOUNDARY - Warpline responses identify absent, stale, skipped, or
    no-snapshot enrichment without claiming sibling-owned current truth.
    Reject branch: any response that treats Loomweave, Charter, Legis, Wardline,
-   or Filigree data as Heddle-owned truth blocks acceptance.
-5. SOLO MODE - With no sibling enrichment, Heddle still returns useful
+   or Filigree data as Warpline-owned truth blocks acceptance.
+5. SOLO MODE - With no sibling enrichment, Warpline still returns useful
    locator-keyed changed/timeline/reverify facts and explicit `NO_SNAPSHOT` or
    absent enrichment state.
    Reject branch: sibling absence causing crash, empty ambiguity, or hidden
    degradation blocks acceptance.
 6. RELEASE HYGIENE - The release-candidate gate passes with member-diff guard,
    spike harness, productization gate, lint, types, and tests.
-   Reject branch: any Heddle-caused sibling repo diff or failing gate blocks
+   Reject branch: any Warpline-caused sibling repo diff or failing gate blocks
    acceptance.
 
 ## Non-goals (this bet)
@@ -68,16 +68,16 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
 - Do not declare federation admission.
 - Do not patch sibling repos.
 - Do not design pricing, hosting, telemetry, or external release posture.
-- Do not turn Heddle into a tracker, governance gate, trust engine, or current
+- Do not turn Warpline into a tracker, governance gate, trust engine, or current
   structure authority.
 
 ## Constraints & guardrails
 
-- Heddle must remain local-first and read-only against analyzed repos.
+- Warpline must remain local-first and read-only against analyzed repos.
 - Missing sibling data must degrade honestly and explicitly.
 - MCP deficiencies are P0 product defects; they are not documentation polish.
-- A broken Heddle hook must never block a commit.
-- Heddle-owned draft contracts remain non-normative until owner admission and
+- A broken Warpline hook must never block a commit.
+- Warpline-owned draft contracts remain non-normative until owner admission and
   glossary clearance.
 
 ## Open questions / assumptions

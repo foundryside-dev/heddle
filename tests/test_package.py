@@ -4,19 +4,19 @@ import subprocess
 import sys
 from os import environ
 
-import heddle
+import warpline
 
 
 def test_package_has_version() -> None:
-    assert heddle.__version__ == "1.0.0"
+    assert warpline.__version__ == "1.0.0"
 
 
 def test_cli_version() -> None:
     completed = subprocess.run(
-        [sys.executable, "-m", "heddle.cli", "--version"],
+        [sys.executable, "-m", "warpline.cli", "--version"],
         check=True,
         env={**environ, "PYTHONPATH": "src"},
         text=True,
         stdout=subprocess.PIPE,
     )
-    assert completed.stdout.strip() == "heddle 1.0.0"
+    assert completed.stdout.strip() == "warpline 1.0.0"

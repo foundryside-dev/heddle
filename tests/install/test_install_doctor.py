@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from heddle import install_support
-from heddle.cli import main
+from warpline import install_support
+from warpline.cli import main
 
 
 def _git_repo(tmp_path: Path) -> Path:
@@ -30,20 +30,20 @@ def test_install_wires_every_component_and_doctor_is_green(tmp_path: Path) -> No
 
     # MCP binding
     mcp = json.loads((repo / ".mcp.json").read_text(encoding="utf-8"))
-    assert mcp["mcpServers"]["heddle"]["type"] == "stdio"
-    assert mcp["mcpServers"]["heddle"]["command"]
+    assert mcp["mcpServers"]["warpline"]["type"] == "stdio"
+    assert mcp["mcpServers"]["warpline"]["command"]
 
     # skill injection into BOTH skill systems
-    assert (repo / ".claude" / "skills" / "heddle-workflow" / "SKILL.md").exists()
-    assert (repo / ".agents" / "skills" / "heddle-workflow" / "SKILL.md").exists()
+    assert (repo / ".claude" / "skills" / "warpline-workflow" / "SKILL.md").exists()
+    assert (repo / ".agents" / "skills" / "warpline-workflow" / "SKILL.md").exists()
 
-    # config under .weft/heddle
-    config = json.loads((repo / ".weft" / "heddle" / "config.json").read_text(encoding="utf-8"))
-    assert config == {"prefix": "heddle", "name": "heddle", "version": 1}
-    assert (repo / ".weft" / "heddle" / "INSTALL_VERSION").read_text().strip() == "1"
+    # config under .weft/warpline
+    config = json.loads((repo / ".weft" / "warpline" / "config.json").read_text(encoding="utf-8"))
+    assert config == {"prefix": "warpline", "name": "warpline", "version": 1}
+    assert (repo / ".weft" / "warpline" / "INSTALL_VERSION").read_text().strip() == "1"
 
     # git hook
-    assert "HEDDLE MANAGED BLOCK" in (repo / ".git" / "hooks" / "post-commit").read_text()
+    assert "WARPLINE MANAGED BLOCK" in (repo / ".git" / "hooks" / "post-commit").read_text()
 
     doctor = install_support.run_doctor(repo)
     assert doctor.ok
@@ -61,13 +61,13 @@ def test_install_preserves_foreign_instruction_blocks(tmp_path: Path) -> None:
     install_support.run_install(repo, {"claude_md"})
     text = (repo / "CLAUDE.md").read_text(encoding="utf-8")
     assert "filigree:instructions" in text  # foreign block untouched
-    assert "<!-- heddle:instructions" in text
-    assert "<!-- /heddle:instructions -->" in text
+    assert "<!-- warpline:instructions" in text
+    assert "<!-- /warpline:instructions -->" in text
 
-    # idempotent: a second pass does not duplicate the heddle block
+    # idempotent: a second pass does not duplicate the warpline block
     install_support.run_install(repo, {"claude_md"})
     text2 = (repo / "CLAUDE.md").read_text(encoding="utf-8")
-    assert text2.count("<!-- /heddle:instructions -->") == 1
+    assert text2.count("<!-- /warpline:instructions -->") == 1
     assert text2.count("<!-- /filigree:instructions -->") == 1
 
 
@@ -77,7 +77,7 @@ def test_doctor_reports_missing_then_fix_repairs(tmp_path: Path) -> None:
     # break one component: remove the skill
     import shutil
 
-    shutil.rmtree(repo / ".claude" / "skills" / "heddle-workflow")
+    shutil.rmtree(repo / ".claude" / "skills" / "warpline-workflow")
     pre = install_support.run_doctor(repo)
     assert not pre.ok
     assert any(not r.ok and r.name == "Claude Code skills" for r in pre.results)
@@ -85,7 +85,7 @@ def test_doctor_reports_missing_then_fix_repairs(tmp_path: Path) -> None:
     fixed = install_support.run_doctor(repo, fix=True)
     assert fixed.ok
     assert any(name == "Claude Code skills" for name, _ in fixed.fixed)
-    assert (repo / ".claude" / "skills" / "heddle-workflow" / "SKILL.md").exists()
+    assert (repo / ".claude" / "skills" / "warpline-workflow" / "SKILL.md").exists()
 
 
 def test_doctor_flags_non_git_repo_as_unfixable(tmp_path: Path) -> None:
@@ -106,7 +106,7 @@ def test_codex_mcp_block_is_valid_toml_and_preserves_existing(tmp_path: Path) ->
     install_support.run_install(repo, {"codex"})
     data = tomllib.loads(config_path.read_text(encoding="utf-8"))
     assert data["existing"]["keep"] is True
-    assert data["mcp_servers"]["heddle"]["command"]
+    assert data["mcp_servers"]["warpline"]["command"]
 
 
 def test_cli_install_and_doctor_json_exit_codes(tmp_path: Path) -> None:
@@ -122,4 +122,4 @@ def test_cli_session_context_is_fail_soft(
     repo.mkdir()
     assert main(["session-context", "--repo", str(repo)]) == 0
     out = capsys.readouterr().out
-    assert "heddle" in out
+    assert "warpline" in out

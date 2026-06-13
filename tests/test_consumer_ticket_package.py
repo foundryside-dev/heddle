@@ -12,7 +12,7 @@ def test_consumer_ticket_package_exists_for_every_pairwise_story() -> None:
     for consumer in CONSUMERS:
         assert f"## {consumer}" in text
     assert "owner admission" in text
-    assert "Do not patch sibling repos from Heddle delivery work" in text
+    assert "Do not patch sibling repos from Warpline delivery work" in text
 
 
 def test_consumer_ticket_package_keeps_authorities_separate() -> None:

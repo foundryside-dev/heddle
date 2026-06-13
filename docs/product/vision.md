@@ -1,13 +1,13 @@
-# Vision - Heddle
+# Vision - Warpline
 
 ## Purpose
 
-Heddle makes change impact mechanically answerable for local coding agents. Given
+Warpline makes change impact mechanically answerable for local coding agents. Given
 a diff or commit range, an agent should be able to ask what changed, who changed
 it, what may be downstream-affected, and what must be reverified without
 falling back to manual grep or human blast-radius review.
 
-Heddle owns temporal change-impact facts. Heddle does not own the present-time
+Warpline owns temporal change-impact facts. Warpline does not own the present-time
 shape of the codebase or the federation's operational systems of record.
 
 ## Who it serves
@@ -17,21 +17,21 @@ shape of the codebase or the federation's operational systems of record.
 - Secondary: the human owner and sibling maintainers who need lower supervision
   load, clearer reverify prompts, and cleaner post-admission integration seams.
 - Explicitly not: hosted analytics users, generic project-management users,
-  teams that want Heddle to replace Loomweave, Filigree, Wardline, Legis, or
+  teams that want Warpline to replace Loomweave, Filigree, Wardline, Legis, or
   Charter.
 
 ## Positioning
 
 For local agents changing Weft member code who need reliable change-impact
-context, Heddle is a local-first temporal change-impact authority that returns
+context, Warpline is a local-first temporal change-impact authority that returns
 structured changed-set, timeline, blast-radius, and reverify answers through CLI
-and MCP, unlike manual grep or point-in-time graph tools, because Heddle stores
+and MCP, unlike manual grep or point-in-time graph tools, because Warpline stores
 dated entity change facts and dated edge snapshots while preserving sibling
 authority boundaries.
 
 ## Federation authority
 
-Heddle owns temporal change-impact facts:
+Warpline owns temporal change-impact facts:
 
 - entity-level change events from git history and hook-fed ingest
 - dated edge snapshots read from published sibling surfaces
@@ -48,12 +48,12 @@ Sibling authority boundaries are product doctrine, not implementation detail:
   attestations.
 - Filigree owns work state, issue lifecycle, claims, and close gates.
 
-Heddle does not own work state, trust policy, governance, or obligations.
+Warpline does not own work state, trust policy, governance, or obligations.
 
 ## Anti-goals
 
 - Do not become a federation aggregator or shared cross-member store.
-- Do not answer current structure as Heddle truth; query Loomweave or degrade.
+- Do not answer current structure as Warpline truth; query Loomweave or degrade.
 - Do not auto-file, auto-close, allow, block, sign off, waive, or adjudicate.
 - Do not require sibling installation for the core local workflow.
 - Do not hide absence, staleness, or degraded enrichment.
@@ -71,15 +71,15 @@ Autonomous within strategy - the agent MAY, without asking:
 
 - maintain these product artifacts and append Product Decision Records
 - write PRDs and falsifiable acceptance criteria
-- refine Heddle-owned pre-admission contracts and design docs
-- dispatch implementation planning for reversible, repo-local Heddle work
+- refine Warpline-owned pre-admission contracts and design docs
+- dispatch implementation planning for reversible, repo-local Warpline work
 - reject or reprioritize work that violates the authority boundaries above
 - accept or reject delivered work against `metrics.md` and PRD criteria
 
 Escalate BEFORE acting - the agent MUST get owner sign-off for:
 
 - changing this vision, strategy, authority grant, or federation authority split
-- declaring Heddle an admitted Weft member
+- declaring Warpline an admitted Weft member
 - changing public/user-facing release status outside this repo
 - patching sibling repos or creating work in sibling trackers
 - deprecating a capability users or sibling products depend on

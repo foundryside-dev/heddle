@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from heddle import cli
-from heddle.dogfood import run_dogfood_evaluator
+from warpline import cli
+from warpline.dogfood import run_dogfood_evaluator
 
 
 def test_dogfood_evaluator_writes_required_machine_readable_contract(
@@ -23,7 +23,7 @@ def test_dogfood_evaluator_writes_required_machine_readable_contract(
     assert output.exists()
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload == result
-    assert payload["schema"] == "heddle.dogfood_results.v1"
+    assert payload["schema"] == "warpline.dogfood_results.v1"
     assert payload["thresholds"] == {
         "synthetic_solo_parity": 8,
         "synthetic_federation_uplift": 8,
@@ -42,7 +42,7 @@ def test_dogfood_evaluator_writes_required_machine_readable_contract(
             "lane",
             "tool_calls",
             "baseline_answer",
-            "heddle_answer",
+            "warpline_answer",
             "parity",
             "uplift",
             "failure_reason",

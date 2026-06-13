@@ -30,7 +30,7 @@
       {
         "hooks": [
           {
-            "command": "loomweave hook session-start --path '/home/john/heddle'",
+            "command": "loomweave hook session-start --path '/home/john/warpline'",
             "type": "command"
           }
         ]
@@ -38,7 +38,7 @@
       {
         "hooks": [
           {
-            "command": "/home/john/.local/bin/heddle session-context --repo '/home/john/heddle'",
+            "command": "/home/john/.local/bin/warpline session-context --repo '/home/john/warpline'",
             "timeout": 5000,
             "type": "command"
           }

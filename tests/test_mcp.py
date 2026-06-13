@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from heddle.git import backfill
-from heddle.mcp import dispatch
-from heddle.mcp import main as mcp_main
-from heddle.store import HeddleStore, default_store_path
+from warpline.git import backfill
+from warpline.mcp import dispatch
+from warpline.mcp import main as mcp_main
+from warpline.store import WarplineStore, default_store_path
 
 
 def run(cmd: list[str], cwd: Path) -> str:
@@ -37,12 +37,12 @@ def test_tools_list_contains_changed_and_timeline() -> None:
     assert {"changed", "timeline", "blast_radius", "reverify", "capture_snapshot"} <= names
     # endorsed names live ALONGSIDE the shims (both must be present, identical schema)
     assert {
-        "heddle_change_list",
-        "heddle_entity_timeline_get",
-        "heddle_entity_churn_count_get",
-        "heddle_impact_radius_get",
-        "heddle_reverify_worklist_get",
-        "heddle_edge_snapshot_capture",
+        "warpline_change_list",
+        "warpline_entity_timeline_get",
+        "warpline_entity_churn_count_get",
+        "warpline_impact_radius_get",
+        "warpline_reverify_worklist_get",
+        "warpline_edge_snapshot_capture",
     } <= names
     for tool in tools:
         assert "inputSchema" in tool
@@ -64,7 +64,7 @@ def test_tools_list_contains_changed_and_timeline() -> None:
         assert metadata["peer_side_effects"] == []
         assert isinstance(metadata["idempotent"], bool)
         assert isinstance(metadata["writes_local_state"], bool)
-        assert ".weft/heddle/" in metadata["mutates_paths"]
+        assert ".weft/warpline/" in metadata["mutates_paths"]
 
 
 def test_endorsed_and_shim_return_identical_schema_and_data(tmp_path: Path) -> None:
@@ -84,9 +84,9 @@ def test_endorsed_and_shim_return_identical_schema_and_data(tmp_path: Path) -> N
             )
         )
 
-    endorsed = call("heddle_change_list")
+    endorsed = call("warpline_change_list")
     shim = call("changed")
-    assert endorsed["schema"] == shim["schema"] == "heddle.change_list.v1"
+    assert endorsed["schema"] == shim["schema"] == "warpline.change_list.v1"
     assert endorsed["data"] == shim["data"]
 
 
@@ -126,7 +126,7 @@ def test_bad_tool_arguments_are_structured_error() -> None:
     assert response["error"]["code"] == -32602
     assert response["error"]["message"] == "invalid params"
     data = response["error"]["data"]
-    assert data["schema"] == "heddle.error.v1"
+    assert data["schema"] == "warpline.error.v1"
     assert data["error_code"] == "missing_required_field"
     assert data["retryability"] == "retry_with_changes"
     assert data["rejected_field"] == "repo"
@@ -148,7 +148,7 @@ def test_initialize_is_spec_complete() -> None:
     )
     result = response["result"]
     assert result["protocolVersion"] == "2025-03-26"
-    assert result["serverInfo"]["name"] == "heddle"
+    assert result["serverInfo"]["name"] == "warpline"
     assert result["serverInfo"]["version"]
     assert result["capabilities"] == {"tools": {}}
 
@@ -199,7 +199,7 @@ def test_mcp_stdio_tool_error_is_structured_and_server_continues(tmp_path: Path)
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
     proc = subprocess.run(
-        [sys.executable, "-c", "from heddle.mcp import main; raise SystemExit(main())"],
+        [sys.executable, "-c", "from warpline.mcp import main; raise SystemExit(main())"],
         input="\n".join(json.dumps(request) for request in requests) + "\n",
         text=True,
         capture_output=True,
@@ -210,7 +210,7 @@ def test_mcp_stdio_tool_error_is_structured_and_server_continues(tmp_path: Path)
     responses = [json.loads(line) for line in proc.stdout.splitlines()]
     assert responses[0]["result"]["protocolVersion"] == "2025-03-26"
     assert responses[1]["error"]["code"] == -32602
-    assert responses[1]["error"]["data"]["schema"] == "heddle.error.v1"
+    assert responses[1]["error"]["data"]["schema"] == "warpline.error.v1"
     assert responses[1]["error"]["data"]["error_code"] == "invalid_rev_range"
     assert responses[1]["error"]["data"]["rejected_field"] == "rev_range"
     assert responses[2]["result"]["tools"]
@@ -229,7 +229,7 @@ def test_changed_response_feeds_reverify_in_two_tool_calls(
     run(["git", "add", "app.py"], repo)
     run(["git", "commit", "-m", "add app"], repo)
 
-    with HeddleStore.open(default_store_path(repo)) as store:
+    with WarplineStore.open(default_store_path(repo)) as store:
         backfill(store, repo)
 
     changed_response = dispatch(
@@ -241,11 +241,11 @@ def test_changed_response_feeds_reverify_in_two_tool_calls(
         }
     )
     changed = tool_payload(changed_response)
-    assert changed["schema"] == "heddle.change_list.v1"
+    assert changed["schema"] == "warpline.change_list.v1"
     assert changed["ok"] is True
     next_actions = changed["next_actions"]
     assert isinstance(next_actions, dict)
-    reverify_action = next_actions["heddle_reverify_worklist_get"]
+    reverify_action = next_actions["warpline_reverify_worklist_get"]
     assert isinstance(reverify_action, dict)
 
     reverify_response = dispatch(
@@ -260,7 +260,7 @@ def test_changed_response_feeds_reverify_in_two_tool_calls(
         }
     )
     reverify = tool_payload(reverify_response)
-    assert reverify["schema"] == "heddle.reverify_worklist.v1"
+    assert reverify["schema"] == "warpline.reverify_worklist.v1"
     assert reverify["ok"] is True
     assert reverify["data"]["completeness"] == "NO_SNAPSHOT"
 
@@ -283,7 +283,7 @@ def test_capture_snapshot_mcp_degrades_without_loomweave(tmp_path: Path) -> None
         }
     )
     payload = tool_payload(response)
-    assert payload["schema"] == "heddle.edge_snapshot.v1"
+    assert payload["schema"] == "warpline.edge_snapshot.v1"
     assert payload["ok"] is True
     assert payload["data"]["completeness"] == "SKIPPED"
     assert payload["meta"]["peer_side_effects"] == []

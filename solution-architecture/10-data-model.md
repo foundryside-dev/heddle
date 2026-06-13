@@ -1,8 +1,8 @@
 # Data Model (logical)
 
-Owning context: **Heddle is the data owner for all entities below** — they are
+Owning context: **Warpline is the data owner for all entities below** — they are
 temporal facts no sibling stores. Nothing here mirrors a sibling's system of
-record: entity *identity* stays Loomweave's (Heddle stores only the key),
+record: entity *identity* stays Loomweave's (Warpline stores only the key),
 work state stays Filigree's, trust stays Wardline's, provenance verdicts stay
 Legis's. (Doctrine §6; ADR-0004.)
 
@@ -23,7 +23,7 @@ erDiagram
 identity (canonical path + remote fingerprint), store location. Cardinality:
 1 repo → 1 store DB.
 
-**ENTITY_KEY** — the durable key for one code entity as Heddle saw it.
+**ENTITY_KEY** — the durable key for one code entity as Warpline saw it.
 `sei?` (opaque `loomweave:eid:...` string when resolved — frozen scheme,
 CON-TEC-01), `locator` (path + qualname; always present), `first_seen`,
 `last_seen`, upgrade lineage (locator-only → SEI-upgraded, with timestamp;

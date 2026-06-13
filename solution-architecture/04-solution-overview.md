@@ -1,16 +1,16 @@
 # Solution Overview
 
 ## The claim
-Heddle is a **bounded temporal-graph authority**. It owns exactly one thing no
+Warpline is a **bounded temporal-graph authority**. It owns exactly one thing no
 federation member owns: **what happened to entities over time** — per-entity
 change history keyed on SEI (locator in solo mode), plus point-in-time snapshots
 of structural edges sufficient to answer "what is downstream of this change."
 
 The doctrinal cut that keeps it out of aggregator territory (doctrine §6):
-**Loomweave owns "now" (the current graph, the identity authority); Heddle owns
-"over time" (the history Loomweave deliberately discards).** Heddle never serves
+**Loomweave owns "now" (the current graph, the identity authority); Warpline owns
+"over time" (the history Loomweave deliberately discards).** Warpline never serves
 current structural truth — a query about "now" is answered by Loomweave or not
-at all. Heddle serves trajectories and blast radii, stamped with the staleness
+at all. Warpline serves trajectories and blast radii, stamped with the staleness
 of the edges it traversed.
 
 ## Shape (one paragraph)
@@ -26,7 +26,7 @@ member-side code.
 ## What it is NOT (anti-goals, inherited and local)
 - Not an aggregator or mirror of any sibling's system of record (doctrine §6).
 - Not a "now" oracle — point-in-time structural truth stays Loomweave's.
-- Not requirements impact — Charter's slice; Charter consumes Heddle post-launch.
+- Not requirements impact — Charter's slice; Charter consumes Warpline post-launch.
 - Not change execution (Shuttle's gap), not identity trust (Tabard).
 - Not load-bearing for any sibling, ever (doctrine §5).
 
@@ -38,12 +38,12 @@ member-side code.
 - **+ Wardline:** scope a re-scan to the affected set instead of the world.
 - **+ Filigree:** a re-verify worklist can be filed as issues; change events
   can carry the actor strings filigree already attributes.
-- **Absent any of them:** Heddle still ingests git, still answers
+- **Absent any of them:** Warpline still ingests git, still answers
   locator-keyed timelines and blast radii. Less rich, never broken.
 
 ## Why now
 Spare dev capacity exists while the four launch members are frozen
-(CON-TEC-02); Heddle is the only shaped candidate that is a genuinely new
+(CON-TEC-02); Warpline is the only shaped candidate that is a genuinely new
 system rather than a feature inside a frozen member, and PDR-0013 already
 ranked it discovery slot #1. Spike-first: this package designs to a go/no-go,
 not to a build commitment.

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heddle.productization import ProductizationDecision, read_productization_decision
+from warpline.productization import ProductizationDecision, read_productization_decision
 
 
 def write_dogfood_results(
@@ -16,7 +16,7 @@ def write_dogfood_results(
     path.write_text(
         (
             "{"
-            '"schema":"heddle.dogfood_results.v1",'
+            '"schema":"warpline.dogfood_results.v1",'
             f'"ready":{str(ready).lower()},'
             '"thresholds":{'
             '"real_member_parity":1,'
@@ -46,7 +46,7 @@ def test_productization_gate_blocks_go_recommendation_without_dogfood(
 ) -> None:
     report = tmp_path / "REPORT.md"
     report.write_text(
-        "# Heddle Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
+        "# Warpline Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
         encoding="utf-8",
     )
     decision = read_productization_decision(
@@ -60,7 +60,7 @@ def test_productization_gate_blocks_go_recommendation_without_dogfood(
 def test_productization_gate_allows_go_with_passing_dogfood(tmp_path: Path) -> None:
     report = tmp_path / "REPORT.md"
     report.write_text(
-        "# Heddle Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
+        "# Warpline Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
         encoding="utf-8",
     )
     dogfood = tmp_path / "dogfood.json"
@@ -73,7 +73,7 @@ def test_productization_gate_allows_go_with_passing_dogfood(tmp_path: Path) -> N
 def test_productization_gate_blocks_go_with_failing_dogfood(tmp_path: Path) -> None:
     report = tmp_path / "REPORT.md"
     report.write_text(
-        "# Heddle Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
+        "# Warpline Spike Report\n\nRecommendation: go\n\nOwner admission: pending\n",
         encoding="utf-8",
     )
     dogfood = tmp_path / "dogfood.json"

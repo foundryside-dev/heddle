@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from heddle.loomweave import (
+from warpline.loomweave import (
     loomweave_entity_id_candidates,
     loomweave_resolve_qualnames,
     resolve_sei_for_locator,
 )
-from heddle.store import HeddleStore
+from warpline.store import WarplineStore
 
 
 class FakeClient:
@@ -39,10 +39,10 @@ class FakeClient:
 
 
 def test_resolve_qualnames_are_bare_dotted_for_real_loomweave() -> None:
-    assert loomweave_resolve_qualnames("python:function:src/heddle/store.py::S.fn") == [
-        "heddle.store.S.fn",
-        "src.heddle.store.S.fn",
-        "python:function:src/heddle/store.py::S.fn",
+    assert loomweave_resolve_qualnames("python:function:src/warpline/store.py::S.fn") == [
+        "warpline.store.S.fn",
+        "src.warpline.store.S.fn",
+        "python:function:src/warpline/store.py::S.fn",
     ]
 
 
@@ -95,7 +95,7 @@ def test_resolve_sei_for_locator_accepts_legacy_entity_payload() -> None:
 def test_store_persists_sei_without_parsing(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         repo_id = store.ensure_repo(repo)
         key_id = store.ensure_entity_key(
             repo_id,

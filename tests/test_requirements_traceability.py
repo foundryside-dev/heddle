@@ -28,7 +28,7 @@ REQUIREMENTS = [
 
 
 def test_delivery_plan_traces_every_requirement_to_task_and_verification() -> None:
-    text = Path("docs/plans/2026-06-12-heddle-delivery.md").read_text(encoding="utf-8")
+    text = Path("docs/plans/2026-06-12-warpline-delivery.md").read_text(encoding="utf-8")
     missing: list[str] = []
     weak: list[str] = []
     for req in REQUIREMENTS:

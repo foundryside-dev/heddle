@@ -3,8 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from heddle.git import backfill, ingest_commit
-from heddle.store import HeddleStore
+from warpline.git import backfill, ingest_commit
+from warpline.store import WarplineStore
 
 
 class FakeSeiClient:
@@ -47,7 +47,7 @@ def test_backfill_records_file_change(tmp_path: Path) -> None:
     run(["git", "add", "app.py"], repo)
     run(["git", "commit", "-m", "add app"], repo)
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         report = backfill(store, repo)
         events = store.list_change_events(repo)
 
@@ -68,7 +68,7 @@ def test_backfill_is_idempotent(tmp_path: Path) -> None:
     run(["git", "add", "app.py"], repo)
     run(["git", "commit", "-m", "add app"], repo)
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         backfill(store, repo)
         backfill(store, repo)
         assert len(store.list_change_events(repo)) == 1
@@ -84,7 +84,7 @@ def test_backfill_degrades_undecodable_python_file_to_file_locator(tmp_path: Pat
     run(["git", "add", "bad.py"], repo)
     run(["git", "commit", "-m", "add undecodable source"], repo)
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         report = backfill(store, repo)
         events = store.list_change_events(repo)
 
@@ -103,7 +103,7 @@ def test_backfill_optionally_resolves_sei(tmp_path: Path) -> None:
     run(["git", "commit", "-m", "add app"], repo)
     client = FakeSeiClient()
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         report = backfill(store, repo, sei_client=client)
         events = store.list_change_events(repo)
 
@@ -125,7 +125,7 @@ def test_ingest_commit_optionally_resolves_sei(tmp_path: Path) -> None:
     run(["git", "commit", "-m", "add app"], repo)
     client = FakeSeiClient()
 
-    with HeddleStore.open(tmp_path / "heddle.db") as store:
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
         report = ingest_commit(store, repo, "HEAD", sei_client=client)
         events = store.list_change_events(repo)
 

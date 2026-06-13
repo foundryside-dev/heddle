@@ -1,6 +1,6 @@
 """The 14 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
 
-These are heddle's contribution as the 5th producer to the four-member
+These are warpline's contribution as the 5th producer to the four-member
 conformance oracle (GS-7). Each test is one frozen (input → output assertion)
 vector; the GV id in the name maps 1:1 to the spec table.
 """
@@ -11,10 +11,10 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from heddle import commands
-from heddle.siblings import RenameFeed, work_enrichment_for_sei
-from heddle.snapshot import capture_edge_snapshot
-from heddle.store import HeddleStore, default_store_path
+from warpline import commands
+from warpline.siblings import RenameFeed, work_enrichment_for_sei
+from warpline.snapshot import capture_edge_snapshot
+from warpline.store import WarplineStore, default_store_path
 
 ALL_TOOLS = "GV-LG-3"
 
@@ -38,18 +38,18 @@ def _git_repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _store(repo: Path) -> HeddleStore:
-    return HeddleStore.open(default_store_path(repo))
+def _store(repo: Path) -> WarplineStore:
+    return WarplineStore.open(default_store_path(repo))
 
 
 def _seed_entity(
-    store: HeddleStore, repo_id: str, locator: str, sei: str | None, commit: str = "c1"
+    store: WarplineStore, repo_id: str, locator: str, sei: str | None, commit: str = "c1"
 ) -> int:
     return store.ensure_entity_key(repo_id, locator=locator, sei=sei, commit_sha=commit)
 
 
 def _add_change(
-    store: HeddleStore,
+    store: WarplineStore,
     repo_id: str,
     key_id: int,
     *,
@@ -127,7 +127,7 @@ def test_gv_lw_1_change_list_carries_locator_sei_and_next_action(tmp_path: Path)
         assert "locator" in item["entity"] and "sei" in item["entity"]
         assert item["entity"]["sei"].startswith("loomweave:eid:")
     assert all(ref["kind"] == "sei" for ref in env["data"]["changed_refs"])
-    assert "heddle_reverify_worklist_get" in env["next_actions"]
+    assert "warpline_reverify_worklist_get" in env["next_actions"]
     assert env["enrichment"]["sei"] == "present"
 
 
@@ -219,7 +219,7 @@ def test_gv_fi_1_reverify_enriched_with_linked_p1_issue(tmp_path: Path) -> None:
     assert item["enrichment"]["work"][0]["issue_status"] == "in_progress"
     assert env["data"]["next_actions"]["filigree"]  # candidate(s)
     assert env["enrichment"]["work"] == "present"
-    # heddle filed nothing — the candidate is a proposal, not an executed action.
+    # warpline filed nothing — the candidate is a proposal, not an executed action.
     assert env["data"]["next_actions"]["filigree"][0]["proposed_action"] == "review_linked_issue"
     assert env["meta"]["peer_side_effects"] == []
 
@@ -314,7 +314,7 @@ def test_gv_lg_1_impact_radius_is_advisory_only(tmp_path: Path) -> None:
         a_id = a
     env = commands.impact_radius(repo, [a_id], depth=2)
     assert "completeness" in env["data"] and "staleness" in env["data"]
-    # advisory: heddle never claims a governance verdict / write side effect
+    # advisory: warpline never claims a governance verdict / write side effect
     assert env["meta"]["local_only"] is True
     assert env["meta"]["peer_side_effects"] == []
     assert "governance_verdict" not in env["data"]

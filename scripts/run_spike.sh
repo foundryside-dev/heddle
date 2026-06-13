@@ -14,22 +14,22 @@ git -C "$tmp_repo" commit -m 'planted initial' >/dev/null
 printf 'def planted():\n    return 2\n' >"$tmp_repo/planted.py"
 git -C "$tmp_repo" commit -am 'planted change' >/dev/null
 
-uv run heddle loomweave-probe --repo /home/john/loomweave --json >/tmp/heddle-loomweave-probe.json
+uv run warpline loomweave-probe --repo /home/john/loomweave --json >/tmp/warpline-loomweave-probe.json
 
 start_ns="$(date +%s%N)"
-uv run heddle backfill --repo "$tmp_repo" --json >/tmp/heddle-backfill.json
+uv run warpline backfill --repo "$tmp_repo" --json >/tmp/warpline-backfill.json
 backfill_ns="$(( $(date +%s%N) - start_ns ))"
 
 start_ns="$(date +%s%N)"
-uv run heddle changed --repo "$tmp_repo" --rev-range HEAD~1..HEAD --json >/tmp/heddle-planted-changed.json
+uv run warpline changed --repo "$tmp_repo" --rev-range HEAD~1..HEAD --json >/tmp/warpline-planted-changed.json
 changed_ns="$(( $(date +%s%N) - start_ns ))"
 
 hook_exit=0
-uv run heddle ingest-commit HEAD --repo "$tmp_repo" >/tmp/heddle-hook-ingest.json || hook_exit="$?"
+uv run warpline ingest-commit HEAD --repo "$tmp_repo" >/tmp/warpline-hook-ingest.json || hook_exit="$?"
 
 planted_hits="$(python - <<'PY'
 import json
-payload = json.load(open('/tmp/heddle-planted-changed.json', encoding='utf-8'))
+payload = json.load(open('/tmp/warpline-planted-changed.json', encoding='utf-8'))
 print(sum(1 for row in payload.get('changed', []) if row.get('path') == 'planted.py'))
 PY
 )"
@@ -48,12 +48,12 @@ payload = {
     "planted_recall": 1.0 if planted_hits > 0 else 0.0,
     "snapshot_completeness": "NO_SNAPSHOT",
 }
-Path("/tmp/heddle-measurements.json").write_text(
+Path("/tmp/warpline-measurements.json").write_text(
     json.dumps(payload, indent=2, sort_keys=True) + "\n",
     encoding="utf-8",
 )
 target = Path("spike/measurements.json")
-if not target.exists() or os.environ.get("HEDDLE_UPDATE_SPIKE_MEASUREMENTS") == "1":
+if not target.exists() or os.environ.get("WARPLINE_UPDATE_SPIKE_MEASUREMENTS") == "1":
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY

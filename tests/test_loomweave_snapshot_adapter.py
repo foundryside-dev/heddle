@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from heddle.snapshot import edges_from_neighborhood
+from warpline.snapshot import edges_from_neighborhood
 
 
 def test_edges_from_neighborhood_reads_callers_and_callees() -> None:

@@ -6,8 +6,8 @@ from pathlib import Path
 FORBIDDEN_IMPORT_ROOTS = {"filigree", "wardline", "legis", "loomweave", "charter"}
 
 
-def test_heddle_does_not_import_sibling_packages() -> None:
-    for path in Path("src/heddle").rglob("*.py"):
+def test_warpline_does_not_import_sibling_packages() -> None:
+    for path in Path("src/warpline").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

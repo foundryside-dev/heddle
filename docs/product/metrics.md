@@ -1,4 +1,4 @@
-# Metrics - Heddle
+# Metrics - Warpline
 
 Last read: 2026-06-13
 
@@ -6,14 +6,14 @@ Last read: 2026-06-13
 
 | Metric | Target (falsifiable) | Current | Read on | Trend |
 |--------|----------------------|---------|---------|-------|
-| Agent impact answer success rate | At least one real member repo passes an executed baseline (`git diff --name-only` plus `rg`) and Heddle MCP returns a non-empty federation-enriched reverify worklist after real Loomweave snapshot capture | `dogfood-eval` shows 1/1 Lacuna baseline parity, 1/1 real Loomweave uplift, 522 captured edges, and 4 reverify items | 2026-06-13 | passing |
+| Agent impact answer success rate | At least one real member repo passes an executed baseline (`git diff --name-only` plus `rg`) and Warpline MCP returns a non-empty federation-enriched reverify worklist after real Loomweave snapshot capture | `dogfood-eval` shows 1/1 Lacuna baseline parity, 1/1 real Loomweave uplift, 522 captured edges, and 4 reverify items | 2026-06-13 | passing |
 
 ## Input metrics
 
 | Metric | Target | Current | Read on |
 |--------|--------|---------|---------|
 | MCP primary capability coverage | 4 of 4 core capabilities exposed through `tools/list`: `changed`, `timeline`, `blast_radius`, `reverify` | 4 of 4 | 2026-06-13 |
-| MCP survivability smoke | Real stdio MCP conversation completes `initialize`, `tools/list`, a successful tool call, a structured bad-input error, and a second `tools/list` after the error | `heddle mcp-smoke --repo . --json` passes with `ok: true` | 2026-06-13 |
+| MCP survivability smoke | Real stdio MCP conversation completes `initialize`, `tools/list`, a successful tool call, a structured bad-input error, and a second `tools/list` after the error | `warpline mcp-smoke --repo . --json` passes with `ok: true` | 2026-06-13 |
 | Tool metadata coverage | 5 of 5 current tools advertise read/local-write status, idempotency, touched local paths, concurrency, repo requirement, and federation dependencies | 5 of 5 | 2026-06-13 |
 | Changed-set fast-path latency | p95 <= 250 ms on the planted spike corpus | 48.793924 ms measured in `spike/measurements.json` | 2026-06-13 |
 | Reverify honesty coverage | 100% of blast-radius and reverify responses include completeness, staleness, and enrichment state | Production snapshot capture has CLI/MCP entrypoints and real-member dogfood proves enriched reverify output | 2026-06-13 |
@@ -24,14 +24,14 @@ Last read: 2026-06-13
 
 | Metric | Floor / ceiling | Current | Read on |
 |--------|-----------------|---------|---------|
-| Member repo diff violations | 0 Heddle-caused diffs in Filigree, Wardline, Legis, Loomweave, or Charter | 0 beyond recorded baselines | 2026-06-13 |
+| Member repo diff violations | 0 Warpline-caused diffs in Filigree, Wardline, Legis, Loomweave, or Charter | 0 beyond recorded baselines | 2026-06-13 |
 | Hook commit blocking | 0 nonzero hook exits in normal failure paths | `hook_ingest_exit_code` = 0 | 2026-06-13 |
 | Sibling absence crashes | 0 crashes when Loomweave is absent or enrichment is unavailable | Tests cover absent enrichment and `NO_SNAPSHOT`; malformed MCP and undecodable-file fixes added after review | 2026-06-13 |
-| Authority-boundary drift | 0 cases where Heddle owns current structure, obligations, work state, trust policy, or governance | Draft contracts and boundary tests pass | 2026-06-13 |
+| Authority-boundary drift | 0 cases where Warpline owns current structure, obligations, work state, trust policy, or governance | Draft contracts and boundary tests pass | 2026-06-13 |
 
 ## Reading notes
 
-- The north-star is deliberately agent-workflow based. Heddle wins only when an
+- The north-star is deliberately agent-workflow based. Warpline wins only when an
   agent can use MCP to make a completion/reverify decision at least as well as
   existing tools in solo mode, and better when federation member enrichment is
   available.

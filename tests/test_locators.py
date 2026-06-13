@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from heddle.locators import python_entity_locators
+from warpline.locators import python_entity_locators
 
 
 def test_python_entity_locators_include_path_and_qualname() -> None:
