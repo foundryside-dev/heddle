@@ -13,7 +13,19 @@ session, the question an agent asks before claiming a change is done:
 The federation split is deliberate: **loomweave owns "now"** (the point-in-time
 graph and SEI minting); **warpline owns "over time"** (dated change facts and edge
 snapshots). warpline is **enrich-only** — it boots, ingests, and answers with no
-sibling installed, and its facts are advisory and never gate.
+sibling installed.
+
+**warpline is advisory only. It never gates a change, never enforces a policy, and
+never decides whether a change is allowed.** This is deconfliction tooling, not
+security. A warpline answer is an enhancement you can act on or ignore — never a
+verdict you must clear. It **consumes** Loomweave SEI (it never mints identity) and
+**feeds** advisory change-impact facts to governance-style surfaces such as
+Legis/Charter, which run their own policy; warpline supplies the facts and never
+makes the call.
+
+The product front door lives at
+[warpline.foundryside.dev](https://warpline.foundryside.dev/); the reference docs
+are under [`docs/`](docs/index.md).
 
 ## Features
 
@@ -39,6 +51,12 @@ Install as a [uv](https://docs.astral.sh/uv/) tool (recommended — provides the
 ```bash
 uv tool install warpline
 warpline --version        # warpline 1.0.0
+```
+
+Or with pip (warpline is a zero-dependency package):
+
+```bash
+pip install warpline
 ```
 
 For development from a checkout:
@@ -188,11 +206,16 @@ and [`CHANGELOG.md`](CHANGELOG.md) for release history.
 
 | Topic | Where |
 | --- | --- |
-| Federation seam contracts (frozen) | [`docs/federation/contracts.md`](docs/federation/contracts.md) |
+| Docs site landing / table of contents | [`docs/index.md`](docs/index.md) |
+| Getting started (install → first worklist) | [`docs/getting-started.md`](docs/getting-started.md) |
+| Concepts (mental model, advisory-not-gating, degrade) | [`docs/concepts/`](docs/concepts/index.md) |
+| CLI reference (every command, flag, exit code) | [`docs/reference/cli.md`](docs/reference/cli.md) |
+| MCP tool reference (all 6 frozen tools) | [`docs/reference/mcp-tools.md`](docs/reference/mcp-tools.md) |
+| Federation (seams, what it feeds/consumes, degrade) | [`docs/federation.md`](docs/federation.md) |
+| Federation seam contracts (frozen, internal) | [`docs/federation/contracts.md`](docs/federation/contracts.md) |
 | Agent usage (progressive-disclosure skill) | [`src/warpline/skills/warpline-workflow/`](src/warpline/skills/warpline-workflow/) |
-| Solution architecture | [`solution-architecture/`](solution-architecture/) |
+| Solution architecture (internal) | [`solution-architecture/`](solution-architecture/) |
 | Product workspace (vision, roadmap, PDRs) | [`docs/product/`](docs/product/) |
-| Consumer integration tickets | [`docs/integration/post-admission-consumer-tickets.md`](docs/integration/post-admission-consumer-tickets.md) |
 | Release history | [`CHANGELOG.md`](CHANGELOG.md) |
 
 The authoritative interface-lock specification is hub-owned
@@ -206,6 +229,9 @@ input/output schema, the envelope, or the error/enrichment vocabularies are a
 hub decision — escalate with evidence rather than diverging. Internal changes
 must keep `ruff`, `mypy --strict`, and the full test suite green, and the 14
 golden vectors (`tests/contracts/test_golden_vectors.py`) passing.
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow and
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) for community expectations.
 
 ## License
 
