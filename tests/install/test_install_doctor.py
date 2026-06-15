@@ -88,6 +88,50 @@ def test_doctor_reports_missing_then_fix_repairs(tmp_path: Path) -> None:
     assert (repo / ".claude" / "skills" / "warpline-workflow" / "SKILL.md").exists()
 
 
+def test_doctor_flags_stale_hook_then_fix_reinstalls(tmp_path: Path) -> None:
+    """Rung 1d: an installed-but-old hook (no reresolve/capture lines) is flagged
+    stale by doctor, and `--fix` regenerates it (R5 — editing hook_body alone
+    never rewrites already-installed hooks)."""
+
+    repo = _git_repo(tmp_path)
+    install_support.run_install(repo)
+    hook = repo / ".git" / "hooks" / "post-commit"
+
+    # Simulate a pre-Rung-1d managed hook: the ingest line, but no currency lines.
+    hook.write_text(
+        "#!/bin/sh\n"
+        "# BEGIN WARPLINE MANAGED BLOCK\n"
+        "warpline ingest-commit HEAD >/dev/null 2>&1 || true\n"
+        "# END WARPLINE MANAGED BLOCK\nexit 0\n",
+        encoding="utf-8",
+    )
+
+    pre = install_support.run_doctor(repo)
+    assert not pre.ok
+    stale = next(r for r in pre.results if r.name == "git post-commit hook")
+    assert stale.ok is False
+    assert "out of date" in stale.detail
+
+    fixed = install_support.run_doctor(repo, fix=True)
+    assert fixed.ok
+    assert any(name == "git post-commit hook" for name, _ in fixed.fixed)
+    body = hook.read_text(encoding="utf-8")
+    assert "reresolve-sei" in body
+    assert "capture-snapshot" in body
+
+
+def test_doctor_passes_for_current_hook(tmp_path: Path) -> None:
+    """A freshly installed hook carries the currency sentinel and doctor is green
+    on the hook check."""
+
+    repo = _git_repo(tmp_path)
+    install_support.run_install(repo)
+    report = install_support.run_doctor(repo)
+    hook = next(r for r in report.results if r.name == "git post-commit hook")
+    assert hook.ok is True
+    assert "reresolve-sei" in (repo / ".git" / "hooks" / "post-commit").read_text()
+
+
 def test_doctor_flags_non_git_repo_as_unfixable(tmp_path: Path) -> None:
     repo = tmp_path / "plain"
     repo.mkdir()

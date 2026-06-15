@@ -13,6 +13,19 @@ def test_hook_body_exits_zero_and_invokes_ingest() -> None:
     assert "exit 0" in body
 
 
+def test_hook_body_carries_reresolve_and_capture_lines() -> None:
+    """Rung 1d: the managed block runs a bounded reresolve sweep + a HEAD capture
+    after ingest, both fail-soft (`|| true`)."""
+
+    body = hook_body("/usr/bin/warpline")
+    assert "/usr/bin/warpline reresolve-sei --limit 25 >/dev/null 2>&1 || true" in body
+    assert "/usr/bin/warpline capture-snapshot --commit HEAD >/dev/null 2>&1 || true" in body
+    # Ordering: ingest first, then heal SEIs, then capture (so capture sees them).
+    assert body.index("ingest-commit") < body.index("reresolve-sei") < body.index(
+        "capture-snapshot"
+    )
+
+
 def test_install_hook_writes_post_commit(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     hooks = repo / ".git" / "hooks"

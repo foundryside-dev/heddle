@@ -305,13 +305,30 @@ def apply_gitignore(repo: Path) -> str:
 
 
 # --- git post-commit hook --------------------------------------------------------
+# Sentinel proving an installed hook carries the current managed body. Rung 1d
+# added the reresolve-sei + capture-snapshot lines (install.py:hook_body); an
+# older installed hook lacks them, so `doctor` flags it stale and `--fix`
+# reinstalls (R5 — editing hook_body alone never rewrites installed hooks).
+HOOK_CURRENCY_SENTINEL = "reresolve-sei"
+
+
 def check_git_hook(repo: Path) -> CheckResult:
     hook = repo.resolve() / ".git" / "hooks" / "post-commit"
     if not (repo.resolve() / ".git").exists():
         return _result("git post-commit hook", False, "not a git repository", fixable=False)
-    if not hook.exists() or "BEGIN WARPLINE MANAGED BLOCK" not in hook.read_text(encoding="utf-8"):
+    if not hook.exists():
         return _result("git post-commit hook", False, "warpline ingest hook not installed")
-    return _result("git post-commit hook", True, "ingest hook installed")
+    body = hook.read_text(encoding="utf-8")
+    if "BEGIN WARPLINE MANAGED BLOCK" not in body:
+        return _result("git post-commit hook", False, "warpline ingest hook not installed")
+    if HOOK_CURRENCY_SENTINEL not in body:
+        return _result(
+            "git post-commit hook",
+            False,
+            "post-commit hook out of date (missing reresolve/capture lines); run "
+            "`warpline install --hooks` or `warpline doctor --fix`",
+        )
+    return _result("git post-commit hook", True, "ingest hook installed (current)")
 
 
 def apply_git_hook(repo: Path) -> str:

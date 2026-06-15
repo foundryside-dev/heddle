@@ -384,6 +384,71 @@ def entity_churn_count(
 
 
 # ---------------------------------------------------------------------------
+# Rung 1d — always-on lazy edge-snapshot capture (M6, Option A).
+#
+# Today the post-commit hook only ingests, so a freshly-installed repo has no
+# edge snapshot and ``blast_radius`` honestly returns NO_SNAPSHOT. The lazy
+# capture below restores the correctness floor on read: when the store has no
+# usable snapshot AND loomweave is reachable, attempt one scoped capture, then
+# re-read. It is ALWAYS-ON internally whenever loomweave is available — there is
+# deliberately no ``auto_capture`` inputSchema field on the frozen tools (M6);
+# the opt-out toggle is interface-pending only.
+#
+# Doctrine: ``blast_radius`` stays PURE (R7) — no ``on_missing_snapshot``
+# parameter, no per-entity subprocess in the traversal path. The capture lives
+# entirely in the tool bodies. It is fail-soft: any loomweave failure falls
+# through to the unchanged NO_SNAPSHOT path (honesty invariant — absence never
+# reads as a clean/empty graph, never raises, never gates).
+#
+# Latency note: the first read against an uncaptured repo pays the
+# ``LoomweaveProbe`` first-call cost (~1-5s of `loomweave serve` spin-up plus
+# the scoped capture). This is bounded to once per NO_SNAPSHOT store — the next
+# read sees a snapshot and skips the probe entirely.
+# ---------------------------------------------------------------------------
+def _lazy_capture_if_missing(
+    store: WarplineStore,
+    repo: Path,
+    key_ids: list[int],
+    loomweave_command: str | None,
+) -> None:
+    """Best-effort scoped snapshot when none exists and loomweave is reachable.
+
+    Always-on internally; fail-soft. Never raises, never gates: on any failure
+    the caller falls through to the unchanged NO_SNAPSHOT path.
+    """
+
+    try:
+        existing = store.latest_snapshot(repo)
+        if existing is not None and existing.get("completeness") != "SKIPPED":
+            return  # a usable snapshot already exists — nothing to do.
+        # loomweave_command is server/project config (env), NOT public agent
+        # input — mirrors capture_snapshot. It is deliberately absent from the
+        # frozen tools' inputSchema (M6).
+        command = loomweave_command or os.environ.get("WARPLINE_LOOMWEAVE_COMMAND", "loomweave")
+        probe = LoomweaveProbe(repo=repo, command=command).probe()
+        if probe.get("status") != "available":
+            return  # loomweave absent/unavailable — honest fall-through.
+        client = LoomweaveMcpClient(repo=repo, command=command)
+        source_version = str(probe.get("version") or "unknown")
+        # Scope the capture to the changed seed's locators when known; an empty
+        # scope means "no resolved seed", so capture the full graph (FULL) so a
+        # cold repo still gets a usable snapshot on the first read.
+        rows = store.entity_keys_by_ids(repo, key_ids) if key_ids else {}
+        scope_locators = {
+            str(row["locator"]) for row in rows.values() if isinstance(row.get("locator"), str)
+        }
+        capture_edge_snapshot(
+            store,
+            repo,
+            client=client,
+            source_version=source_version,
+            scope_locators=scope_locators or None,
+        )
+    except Exception:  # noqa: BLE001 — capture is advisory; never block the read.
+        return
+
+
+# ---------------------------------------------------------------------------
 # warpline_impact_radius_get — warpline.impact_radius.v1
 # ---------------------------------------------------------------------------
 def impact_radius(
@@ -398,6 +463,7 @@ def impact_radius(
     sort_order: str | None = None,
     cursor: Any = None,
     limit: int = 100,
+    loomweave_command: str | None = None,
 ) -> dict[str, Any]:
     refs = parse_changed_refs(changed_refs)
     with WarplineStore.open(default_store_path(repo)) as store:
@@ -408,6 +474,9 @@ def impact_radius(
             changed_refs=refs,
             changed_entity_key_ids=changed_entity_key_ids or [],
         )
+        # Always-on lazy capture (Rung 1d): restore the correctness floor when no
+        # snapshot exists and loomweave is reachable; fail-soft otherwise.
+        _lazy_capture_if_missing(store, repo, key_ids, loomweave_command)
         result = compute_blast_radius(store, repo, key_ids, depth)
         changed, affected = enrich_blast(store, repo, result)
         completeness = result["completeness"]
@@ -477,6 +546,7 @@ def reverify_worklist(
     include_federation: bool = False,
     risk_client: RiskClient | None = None,
     legis_client: LegisClient | None = None,
+    loomweave_command: str | None = None,
 ) -> dict[str, Any]:
     refs = parse_changed_refs(changed_refs)
     with WarplineStore.open(default_store_path(repo)) as store:
@@ -487,6 +557,9 @@ def reverify_worklist(
             changed_refs=refs,
             changed_entity_key_ids=changed_entity_key_ids or [],
         )
+        # Always-on lazy capture (Rung 1d): restore the correctness floor when no
+        # snapshot exists and loomweave is reachable; fail-soft otherwise.
+        _lazy_capture_if_missing(store, repo, key_ids, loomweave_command)
         result = compute_blast_radius(store, repo, key_ids, depth)
         changed, affected = enrich_blast(store, repo, result)
         completeness = result["completeness"]
