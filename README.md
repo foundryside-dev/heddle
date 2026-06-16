@@ -1,6 +1,6 @@
 # warpline — temporal change-impact authority
 
-Version 1.0.0 · Weft federation member (5th) · local-first · enrich-only
+Version 1.1.0 · Weft federation member (5th) · local-first · enrich-only
 
 warpline is the Weft federation's **temporal / change-impact authority**. It owns
 the one thing no other member stores — **per-entity change history across runs,
@@ -50,7 +50,7 @@ Install as a [uv](https://docs.astral.sh/uv/) tool (recommended — provides the
 
 ```bash
 uv tool install warpline
-warpline --version        # warpline 1.0.0
+warpline --version        # warpline 1.1.0
 ```
 
 Or with pip (warpline is a zero-dependency package):
@@ -133,7 +133,7 @@ Every outbound tool returns the frozen success envelope:
   "next_actions": {},
   "enrichment": {"sei": "...", "edges": "...", "work": "...",
                   "risk": "...", "governance": "...", "requirements": "..."},
-  "meta": {"producer": {"tool": "warpline", "version": "1.0.0"},
+  "meta": {"producer": {"tool": "warpline", "version": "1.1.0"},
             "local_only": true, "peer_side_effects": []}
 }
 ```
@@ -194,7 +194,7 @@ uv run ruff check .          # lint
 uv run mypy                  # strict type-check
 uv run pytest                # test suite
 uv run warpline mcp-smoke --repo . --json          # live stdio MCP smoke
-uv run warpline dogfood-eval --real-member-repo /home/john/lacuna --json
+uv run warpline dogfood-eval --real-member-repo /path/to/member-repo --json
 ```
 
 `warpline dogfood-eval` exercises the real change → reverify loop (synthetic lanes

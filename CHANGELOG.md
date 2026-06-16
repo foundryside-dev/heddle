@@ -8,6 +8,56 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [1.1.0] - 2026-06-17
+
+Capability-ladder release (Rung 0/1/2). All frozen `warpline.<contract>.v1` MCP
+contracts are unchanged — this release is strictly additive.
+
+### Added
+
+- **Temporal co-change graph (schema v3).** Git-history-derived co-change
+  coupling between entities, surfaced through the impact/reverify reads (Rung 2
+  Track A).
+- **Risk/governance enrichment** lit up on the reverify worklist, following the
+  closed enrichment vocabulary (`present | absent | unavailable`) (Rung 2 Track C).
+- **`include_federation` cross-member consult** re-added and wired as a
+  hub-blessed read: reverify consults filigree, wardline, and legis through their
+  read-only surfaces, each member carrying its own weft-reason (a member with no
+  transport is honestly `disabled`, never silently dropped).
+- **Always-on lazy edge-snapshot capture** with git-hook and `doctor` wiring
+  (Rung 1d).
+- **Self-healing SEI re-resolution sweep** — stale `loomweave:eid:` SEIs are
+  re-resolved automatically against live loomweave (Rung 1c).
+- **Working-context anchor columns + `detected_context` (schema v2)** (Rung 1b).
+- **Temporal COP internals + non-frozen demo CLI**, including a squash-merge
+  reconstruction demo (Rung 2 Track D). The demo surface is explicitly non-frozen.
+- **Read-surface list-ergonomics microaffordances** (filters/sort/paging) across
+  the read tools (G2).
+
+### Changed
+
+- **Ordered migration runner + PRAGMA hardening** — deterministic, gap-safe
+  schema migrations (v1→v2→v3) with `user_version` tracking (Rung 1a).
+- Internal refactor: extracted `_enrichment` / `_blast` command helpers (Rung 0).
+- **Federation contract clarified (no behavior change):** the wardline
+  `affected_scope` and legis `preflight_impact` "payloads" are documented as
+  consumer-lens names for the single `warpline.impact_radius.v1` wire shape
+  `warpline_impact_radius_get` already emits — not separately-emitted schemas
+  (matches interface-lock §3A/§4A; pinned by GV-WL-1 / GV-LG-1).
+
+### Fixed
+
+- **filigree work-state seam now consumes filigree's live HTTP surface.** The
+  inbound entity-association read previously called a non-existent `filigree`
+  CLI verb and never worked against real filigree (only a test fixture proved
+  it). It now reads `GET /api/entity-associations?entity_id=<sei>` and
+  `GET /api/issue/<id>` (base URL via `FILIGREE_API_URL`, default
+  `http://localhost:8724`), degrading honestly to `unreachable` when filigree is
+  not running — never a fabricated link or a confident-empty.
+- Made impact-radius failure modes **loud** — explicit staleness, miss-set, and
+  dead-input signalling instead of a quiet segfault.
+- Resolved 10 verified review findings on the capability-ladder branch.
+
 ## [1.0.0] - 2026-06-13
 
 First stable release. warpline joins the Weft federation as its 5th member — the
