@@ -39,6 +39,23 @@ def enrichment_state(**overrides: str) -> dict[str, str]:
     return state
 
 
+def local_only_meta(peer_side_effects: list[Any] | None = None) -> dict[str, Any]:
+    """The honesty ``meta`` block every warpline-outbound payload carries.
+
+    Single source of truth for the local-only invariant: ``local_only: True`` and
+    an explicit (default empty) ``peer_side_effects`` list. ``build_envelope`` uses
+    it for the six FROZEN tools; the NON-FROZEN demo/internal CLI verbs
+    (``cop`` / ``co-change`` / ``rebuild-coupling``) reuse it so the guarantee
+    cannot be silently dropped by a hand-built payload.
+    """
+
+    return {
+        "producer": {"tool": "warpline", "version": __version__},
+        "local_only": True,
+        "peer_side_effects": peer_side_effects or [],
+    }
+
+
 def build_envelope(
     schema: str,
     *,
@@ -63,9 +80,5 @@ def build_envelope(
         "warnings": warnings or [],
         "next_actions": next_actions or {},
         "enrichment": enrich,
-        "meta": {
-            "producer": {"tool": "warpline", "version": __version__},
-            "local_only": True,
-            "peer_side_effects": peer_side_effects or [],
-        },
+        "meta": local_only_meta(peer_side_effects),
     }

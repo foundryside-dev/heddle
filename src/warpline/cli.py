@@ -6,6 +6,7 @@ from pathlib import Path
 
 from warpline import __version__, commands, install_support
 from warpline.dogfood import DEFAULT_DOGFOOD_RESULTS, REAL_MEMBER_REPO, run_dogfood_evaluator
+from warpline.envelope import local_only_meta
 from warpline.git import backfill, ingest_commit
 from warpline.install import install_hook
 from warpline.loomweave import LoomweaveMcpClient, LoomweaveProbe, ToolClient
@@ -68,6 +69,7 @@ def _cop_payload(
         "items": items,
         "warnings": warnings,
         **cop,
+        "meta": local_only_meta(),
     }
 
 
@@ -139,12 +141,14 @@ def _co_change_payload(
                     "schema": "warpline.coupling.partners.v1",
                     "error": "one of --sei / --locator / --entity-key-id is required",
                     "partners": [],
+                    "meta": local_only_meta(),
                 }
             if row is None:
                 return {
                     "schema": "warpline.coupling.partners.v1",
                     "error": "entity not found",
                     "partners": [],
+                    "meta": local_only_meta(),
                 }
             key_id = int(str(row["id"]))
         partners = store.co_change_partners(repo, key_id, min_count=min_count)
@@ -165,6 +169,7 @@ def _co_change_payload(
         "schema": "warpline.coupling.partners.v1",
         "entity_key_id": key_id,
         "partners": enriched,
+        "meta": local_only_meta(),
     }
 
 
@@ -442,13 +447,18 @@ def main(argv: list[str] | None = None) -> int:
                 report["sei_resolution"] = sei_resolution
         print(json.dumps(report, sort_keys=True) if args.json else report)
         return 0
+    if args.command == "loomweave-probe":
         payload = LoomweaveProbe(repo=args.repo, command=args.loomweave_command).probe()
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
         return 0
     if args.command == "rebuild-coupling":
         with WarplineStore.open(default_store_path(args.repo)) as store:
             report = store.rebuild_co_change_pairs(args.repo)
-        out: dict[str, object] = {"schema": "warpline.coupling.rebuild.v1", **report}
+        out: dict[str, object] = {
+            "schema": "warpline.coupling.rebuild.v1",
+            **report,
+            "meta": local_only_meta(),
+        }
         print(json.dumps(out, sort_keys=True) if args.json else json.dumps(out, indent=2))
         return 0
     if args.command == "co-change":

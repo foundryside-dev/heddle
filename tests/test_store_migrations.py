@@ -119,22 +119,85 @@ def test_user_version_ahead_of_known_warns_to_health_log_and_does_not_fail(
 
 
 def test_user_version_zero_with_divergent_meta_adopts_and_warns(tmp_path: Path) -> None:
-    """M9: user_version==0 but meta.schema_version!='1' → adopt meta value + warn."""
+    """M9: user_version==0 but meta.schema_version!='1' → adopt meta value + warn.
+
+    The marker is only TRUSTED when the schema objects it implies are actually
+    present (#9). Here a fully-migrated DB (all v2/v3 objects on disk) is forged
+    with an ahead marker '5' and user_version=0 — a genuinely-newer writer whose
+    extra v(>3) objects we cannot enumerate — so the marker is adopted as-is and
+    flagged ahead, NOT floored away.
+    """
     db = tmp_path / "warpline.db"
+    # Materialize the real schema (lands at v3 with anchor columns + co_change_pairs).
+    with WarplineStore.open(db):
+        pass
+    # Forge an ahead marker with user_version reset to 0 (divergent newer writer).
     raw = sqlite3.connect(db)
-    raw.executescript(SCHEMA)
     raw.execute("UPDATE meta SET value = '5' WHERE key = 'schema_version'")
     raw.execute("PRAGMA user_version = 0")
     raw.commit()
     raw.close()
 
     with WarplineStore.open(db) as store:
-        # Adopted 5 from meta; 5 > highest known (3), so it is also flagged ahead.
+        # Adopted 5 from meta (objects present → marker trusted); 5 > highest
+        # known (3), so it is also flagged ahead.
         assert store.schema_version() == 5
     codes = _health_codes(db)
     assert "MIGRATION_META_RECONCILE" in codes
     assert "SCHEMA_VERSION_AHEAD" in codes
+    assert "MIGRATION_META_SCHEMA_GAP" not in codes  # objects present → no floor
     assert _user_version(db) == 5
+
+
+def _table_names(db: Path) -> set[str]:
+    conn = sqlite3.connect(db)
+    try:
+        return {
+            str(r[0])
+            for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+
+def test_inflated_meta_without_schema_objects_reruns_migrations(tmp_path: Path) -> None:
+    """#9: meta.schema_version='3' but NO co_change_pairs table → migrations re-run.
+
+    A DB whose meta marker CLAIMS v3 but is missing the objects v3 implies must
+    not come up "at v3" — the next coupling query would raise ``no such table``.
+    The runner sanity-checks object presence, floors to the verified version, and
+    re-applies the missing steps, so after open() the table actually exists.
+    """
+
+    db = tmp_path / "warpline.db"
+    # Base SCHEMA only: no anchor columns (v2), no co_change_pairs (v3). Then forge
+    # an inflated marker with user_version=0 (pre-runner / divergent writer).
+    raw = sqlite3.connect(db)
+    raw.executescript(SCHEMA)
+    raw.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
+    raw.execute("PRAGMA user_version = 0")
+    raw.commit()
+    raw.close()
+    assert "co_change_pairs" not in _table_names(db)
+
+    with WarplineStore.open(db) as store:
+        # The runner re-ran the missing steps rather than trusting the marker.
+        assert store.schema_version() == store_mod.HIGHEST_KNOWN_VERSION
+        # A coupling query now succeeds instead of raising `no such table`.
+        store.ensure_repo(tmp_path)
+        n = store.conn.execute(
+            "SELECT COUNT(*) AS c FROM co_change_pairs"
+        ).fetchone()["c"]
+        assert n == 0
+        # The v2 anchor columns are present too (floored below v2 as well).
+        cols = {r["name"] for r in store.conn.execute("PRAGMA table_info(change_events)")}
+        assert {"detected_branch", "detected_context"} <= cols
+    assert "co_change_pairs" in _table_names(db)
+    assert _user_version(db) == store_mod.HIGHEST_KNOWN_VERSION
+    # The gap was recorded honestly.
+    assert "MIGRATION_META_SCHEMA_GAP" in _health_codes(db)
 
 
 def test_migration_runner_applies_ordered_steps(

@@ -247,3 +247,134 @@ def test_merge_core_action_noop_when_already_healed(tmp_path: Path) -> None:
             resolved_sei="loomweave:eid:resolved",
         )
         assert outcome == {"action": "noop"}
+
+
+# --- #3: merge repoints co_change_pairs and snapshot_edges, not just events ---
+
+
+def _pair(
+    store: WarplineStore, repo_id: str, a: int, b: int
+) -> tuple[int, int, int] | None:
+    """The (a, b, co_change_count) row for a canonical pair, or None."""
+
+    lo, hi = (a, b) if a < b else (b, a)
+    row = store.conn.execute(
+        "SELECT co_change_count FROM co_change_pairs "
+        "WHERE repo_id = ? AND entity_key_id_a = ? AND entity_key_id_b = ?",
+        (repo_id, lo, hi),
+    ).fetchone()
+    return None if row is None else (lo, hi, int(row["co_change_count"]))
+
+
+def test_merge_repoints_co_change_pairs_and_snapshot_edges(tmp_path: Path) -> None:
+    """#3: a null key in co_change_pairs / snapshot_edges is repointed to the twin.
+
+    Covers the three co_change_pairs cases — a clean repoint, a collision that
+    MERGES counts, and a self-pair that COLLAPSES — plus snapshot_edges repoint
+    with a collision drop. After the merge no row may reference the deleted null
+    id, counts are summed not lost, and no self-pair survives.
+    """
+
+    repo = tmp_path / "repo"
+    resolved_sei = "loomweave:eid:resolved"
+    with _open(tmp_path) as store:
+        repo_id = store.ensure_repo(repo)
+        # Resolved twin pre-exists for _LOCATOR; the null key is for the SAME
+        # locator (so the UPDATE collides and the merge path runs). X and Y are
+        # other entities the null key co-changed with.
+        twin_id = store.ensure_entity_key(
+            repo_id, locator=_LOCATOR, sei=resolved_sei, commit_sha="c2"
+        )
+        null_id = _null_key(store, repo_id, _LOCATOR, "c1")
+        x_id = store.ensure_entity_key(
+            repo_id, locator=_LOCATOR_B, sei="loomweave:eid:x", commit_sha="c1"
+        )
+        y_id = store.ensure_entity_key(
+            repo_id,
+            locator="python:function:src/pkg/mod.py::y",
+            sei="loomweave:eid:y",
+            commit_sha="c1",
+        )
+
+        def _insert_pair(a: int, b: int, count: int, last: str, sha: str) -> None:
+            lo, hi = (a, b) if a < b else (b, a)
+            store.conn.execute(
+                "INSERT INTO co_change_pairs(repo_id, entity_key_id_a, entity_key_id_b, "
+                "co_change_count, last_co_change, last_commit_sha) VALUES (?, ?, ?, ?, ?, ?)",
+                (repo_id, lo, hi, count, last, sha),
+            )
+
+        # (null, X): no twin pair → clean repoint to (twin, X), count preserved.
+        _insert_pair(null_id, x_id, 3, "2024-01-01", "n_x")
+        # (null, Y) AND (twin, Y): collide after repoint → counts SUM (4+2=6),
+        # later marker (2024-06-01 from twin) kept.
+        _insert_pair(null_id, y_id, 4, "2024-01-01", "n_y")
+        _insert_pair(twin_id, y_id, 2, "2024-06-01", "t_y")
+        # (null, twin): self-pair after repoint → DROPPED.
+        _insert_pair(null_id, twin_id, 5, "2024-02-01", "n_t")
+        store.conn.commit()
+
+        # snapshot_edges: a non-colliding edge (null→X) and a colliding pair
+        # (null→Y) vs an existing (twin→Y).
+        snap_id = store.create_edge_snapshot(repo_id, "c2", "loomweave", "v1", "FULL")
+        store.append_snapshot_edge(
+            snap_id, source_entity_key_id=null_id, target_entity_key_id=x_id,
+            edge_kind="calls", confidence="high",
+        )
+        store.append_snapshot_edge(
+            snap_id, source_entity_key_id=null_id, target_entity_key_id=y_id,
+            edge_kind="calls", confidence="high",
+        )
+        store.append_snapshot_edge(
+            snap_id, source_entity_key_id=twin_id, target_entity_key_id=y_id,
+            edge_kind="calls", confidence="high",
+        )
+
+        outcome = store.reresolve_entity_key_sei(
+            repo_id=repo_id,
+            null_key_id=null_id,
+            locator=_LOCATOR,
+            resolved_sei=resolved_sei,
+        )
+        assert outcome == {"action": "merged"}
+
+        # --- co_change_pairs ---
+        # No row references the deleted null id.
+        dangling = store.conn.execute(
+            "SELECT COUNT(*) AS c FROM co_change_pairs "
+            "WHERE entity_key_id_a = ? OR entity_key_id_b = ?",
+            (null_id, null_id),
+        ).fetchone()["c"]
+        assert dangling == 0
+        # Clean repoint: (twin, X) carries the original count.
+        assert _pair(store, repo_id, twin_id, x_id) == (
+            *sorted((twin_id, x_id)),
+            3,
+        )
+        # Collision merge: (twin, Y) summed to 6, later marker kept.
+        ty = store.conn.execute(
+            "SELECT co_change_count, last_co_change, last_commit_sha "
+            "FROM co_change_pairs WHERE entity_key_id_a = ? AND entity_key_id_b = ?",
+            (min(twin_id, y_id), max(twin_id, y_id)),
+        ).fetchone()
+        assert int(ty["co_change_count"]) == 6
+        assert ty["last_co_change"] == "2024-06-01"
+        assert ty["last_commit_sha"] == "t_y"
+        # Self-pair collapsed: no (twin, twin) row.
+        assert _pair(store, repo_id, twin_id, twin_id) is None
+
+        # --- snapshot_edges ---
+        edges = {
+            (int(e["source_entity_key_id"]), int(e["target_entity_key_id"]))
+            for e in store.snapshot_edges(snap_id)
+        }
+        # Null id gone from edges; (twin→X) and a single (twin→Y) survive.
+        assert all(null_id not in pair for pair in edges)
+        assert (twin_id, x_id) in edges
+        assert (twin_id, y_id) in edges
+        # The colliding (null→Y) was dropped, not duplicated.
+        assert sum(1 for s, t in edges if (s, t) == (twin_id, y_id)) == 1
+
+        # The orphan null key itself is gone.
+        keys = {int(k["id"]) for k in store.list_entity_keys(repo)}
+        assert null_id not in keys

@@ -14,6 +14,7 @@ Doctrine asserted here:
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -184,3 +185,130 @@ def test_blast_radius_signature_stays_pure() -> None:
 
     params = set(inspect.signature(blast_radius).parameters)
     assert params == {"store", "repo", "changed_entity_key_ids", "depth"}
+
+
+def test_unavailable_loomweave_probes_at_most_once_within_cooldown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When loomweave is unavailable, the probe (a ~1-5s subprocess spin-up) must
+    be throttled: a second read within the cooldown window must NOT re-probe — yet
+    the read still honestly falls through to NO_SNAPSHOT (advisory, never gates)."""
+
+    repo = init_repo(tmp_path)
+    commit(repo, "f.py", "x = 1\n")
+    a, _b = _seed_two_entities(repo)
+
+    probe_calls: list[int] = []
+
+    def _unavailable(self: object) -> dict[str, object]:
+        probe_calls.append(1)
+        return {"status": "skipped", "reason": "command_unavailable"}
+
+    monkeypatch.setattr(commands.LoomweaveProbe, "probe", _unavailable)
+
+    first = commands.impact_radius(repo, [a], depth=2)
+    assert first["data"]["completeness"] == "NO_SNAPSHOT"
+    assert len(probe_calls) == 1  # first read probes once.
+
+    second = commands.impact_radius(repo, [a], depth=2)
+    assert second["data"]["completeness"] == "NO_SNAPSHOT"
+    # Throttle holds: the second read inside the cooldown must NOT re-probe.
+    assert len(probe_calls) == 1
+    # Still no snapshot written — the honest NO_SNAPSHOT fall-through is intact.
+    with WarplineStore.open(default_store_path(repo)) as store:
+        assert store.latest_snapshot(repo) is None
+
+
+def test_throttle_expires_and_reprobes_after_cooldown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The throttle must not permanently disable capture: once the cooldown
+    elapses the probe is retried, so loomweave coming back online is picked up."""
+
+    repo = init_repo(tmp_path)
+    commit(repo, "f.py", "x = 1\n")
+    a, _b = _seed_two_entities(repo)
+
+    probe_calls: list[int] = []
+
+    def _unavailable(self: object) -> dict[str, object]:
+        probe_calls.append(1)
+        return {"status": "skipped", "reason": "command_unavailable"}
+
+    monkeypatch.setattr(commands.LoomweaveProbe, "probe", _unavailable)
+
+    # Pin the clock so the first attempt is recorded at a known instant.
+    base = datetime(2026, 6, 16, 12, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(commands, "_now", lambda: base)
+    commands.impact_radius(repo, [a], depth=2)
+    assert len(probe_calls) == 1
+
+    # Still inside the cooldown -> no re-probe.
+    monkeypatch.setattr(
+        commands,
+        "_now",
+        lambda: base + timedelta(seconds=commands._LAZY_CAPTURE_COOLDOWN_SECONDS - 1),
+    )
+    commands.impact_radius(repo, [a], depth=2)
+    assert len(probe_calls) == 1
+
+    # Past the cooldown -> the probe is retried (recovery path stays open).
+    monkeypatch.setattr(
+        commands,
+        "_now",
+        lambda: base + timedelta(seconds=commands._LAZY_CAPTURE_COOLDOWN_SECONDS + 1),
+    )
+    commands.impact_radius(repo, [a], depth=2)
+    assert len(probe_calls) == 2
+
+
+def test_throttle_does_not_block_capture_when_loomweave_available(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A prior unavailable attempt records a throttle marker, but the FIRST read
+    after loomweave recovers (past cooldown) must still capture a usable snapshot —
+    the throttle gates the probe cost, not the success path."""
+
+    repo = init_repo(tmp_path)
+    commit(repo, "f.py", "x = 1\n")
+    a, _b = _seed_two_entities(repo)
+
+    base = datetime(2026, 6, 16, 12, 0, 0, tzinfo=UTC)
+    monkeypatch.setattr(commands, "_now", lambda: base)
+    monkeypatch.setattr(
+        commands.LoomweaveProbe,
+        "probe",
+        lambda self: {"status": "skipped", "reason": "command_unavailable"},
+    )
+    commands.impact_radius(repo, [a], depth=2)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        assert store.latest_snapshot(repo) is None
+
+    # loomweave recovers; advance past the cooldown so the probe is allowed.
+    monkeypatch.setattr(
+        commands,
+        "_now",
+        lambda: base + timedelta(seconds=commands._LAZY_CAPTURE_COOLDOWN_SECONDS + 1),
+    )
+    _force_loomweave_available(monkeypatch)
+    payload = commands.impact_radius(repo, [a], depth=2)
+    assert payload["data"]["completeness"] == "FULL"
+    with WarplineStore.open(default_store_path(repo)) as store:
+        assert store.latest_snapshot(repo) is not None
+
+
+def test_available_loomweave_still_captures_on_first_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Guard the success path: the throttle must not suppress a capture when
+    loomweave is available on the very first read (no prior attempt marker)."""
+
+    repo = init_repo(tmp_path)
+    commit(repo, "f.py", "x = 1\n")
+    a, _b = _seed_two_entities(repo)
+    _force_loomweave_available(monkeypatch)
+
+    payload = commands.impact_radius(repo, [a], depth=2)
+    assert payload["data"]["completeness"] == "FULL"
+    with WarplineStore.open(default_store_path(repo)) as store:
+        assert store.latest_snapshot(repo) is not None

@@ -134,6 +134,27 @@ def test_resolve_frame_branch_sha_emits_fallback_warning(tmp_path: Path) -> None
     assert items
 
 
+def test_resolve_frame_branch_sha_no_boundary_is_honest_empty(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    # Seed several events so a confident all-history read would NOT be empty.
+    _seed(repo, "base.py", "BASE = 0\n")
+    _seed(repo, "a.py", "x = 1\n")
+    _seed(repo, "b.py", "y = 2\n")
+    with WarplineStore.open(default_store_path(repo)) as store:
+        # A branch_sha frame with a branch but NO sha and NO rev_range cannot
+        # bound an episode. It must NOT fall through to an unbounded all-history
+        # read labelled "partial"; it degrades to an HONEST empty change set.
+        items, echo, _warnings = resolve_frame(
+            store, repo, {"kind": "branch_sha", "branch": "main"}
+        )
+    assert items == []
+    assert echo["kind"] == "branch_sha"
+    assert echo["weft_reason_class"] == "unresolved_input"
+    assert echo["fallback_rev_range"] is None
+    assert echo["weft_reason"]["cause"]
+    assert echo["weft_reason"]["fix"]
+
+
 def test_resolve_frame_unknown_kind_is_rejected(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     with WarplineStore.open(default_store_path(repo)) as store:

@@ -175,6 +175,12 @@ def backfill(
     for sha in _commits(repo, since=since):
         meta = _commit_meta(repo, sha)
         store.upsert_commit(repo_id, meta)
+        # #2 re-ingest idempotence: a commit already on disk (overlapping backfill
+        # ranges, or a hook that already ingested it) must NOT re-derive co-change
+        # pairs — the pair counter is not idempotent, so a re-run would
+        # double-count and diverge from rebuild. Snapshot this BEFORE writing the
+        # commit's events.
+        already_ingested = store.commit_has_change_events(repo_id, sha)
         # M7: accumulate the commit's changed entity ids across the FULL
         # path+locator loop, then derive co-change pairs ONCE per commit so the
         # >30 fan-out cap is per-commit, not per-locator.
@@ -194,9 +200,10 @@ def backfill(
                     changed_at=meta["authored_at"],
                 )
                 commit_key_ids.add(key_id)
-        store.update_co_change_pairs(
-            repo_id, sha, commit_key_ids, changed_at=meta["authored_at"]
-        )
+        if not already_ingested:
+            store.update_co_change_pairs(
+                repo_id, sha, commit_key_ids, changed_at=meta["authored_at"]
+            )
         count += 1
     return {"commits": count, "sei": sei_stats}
 
@@ -211,6 +218,13 @@ def ingest_commit(
     resolved = _git(repo, ["rev-parse", sha]).strip()
     meta = _commit_meta(repo, resolved)
     store.upsert_commit(repo_id, meta)
+    # #2 re-ingest idempotence: co-change counts are NOT idempotent
+    # (``update_co_change_pairs`` increments unconditionally), so a commit whose
+    # change_events are already on disk must NOT re-derive pairs — that would
+    # double-count and diverge from ``rebuild_co_change_pairs``. Snapshot this
+    # BEFORE writing any events (``append_change_event`` is itself
+    # INSERT-OR-IGNORE idempotent, so re-writing them is harmless).
+    already_ingested = store.commit_has_change_events(repo_id, resolved)
     # Working-context anchor (Rung 1b): the detection act, computed ONCE per
     # ingest call and threaded onto every change_event it writes.
     anchor = _detect_anchor(repo)
@@ -244,7 +258,8 @@ def ingest_commit(
             )
             commit_key_ids.add(key_id)
             changed += 1
-    store.update_co_change_pairs(
-        repo_id, resolved, commit_key_ids, changed_at=meta["authored_at"]
-    )
+    if not already_ingested:
+        store.update_co_change_pairs(
+            repo_id, resolved, commit_key_ids, changed_at=meta["authored_at"]
+        )
     return {"commit": resolved, "changes": changed, "sei": sei_stats}

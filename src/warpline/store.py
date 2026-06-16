@@ -244,6 +244,83 @@ def _store_health(conn: sqlite3.Connection, code: str, message: str) -> None:
     )
 
 
+def _later_marker(
+    last_a: str | None,
+    sha_a: str | None,
+    last_b: str | None,
+    sha_b: str | None,
+) -> tuple[str | None, str | None]:
+    """Pick the chronologically-later ``(last_co_change, last_commit_sha)`` pair.
+
+    Used when two co_change_pairs rows merge (#3 twin repoint): the recency
+    marker of the later co-change wins, and a populated timestamp always beats a
+    NULL one — the same "never regress a marker to NULL" rule the live upsert
+    follows (#7). Equal/incomparable timestamps keep side A deterministically.
+    """
+
+    if last_b is None:
+        return last_a, sha_a
+    if last_a is None:
+        return last_b, sha_b
+    return (last_b, sha_b) if str(last_b) > str(last_a) else (last_a, sha_a)
+
+
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (name,),
+    ).fetchone()
+    return row is not None
+
+
+def _change_events_has_anchor_columns(conn: sqlite3.Connection) -> bool:
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(change_events)")}
+    return {
+        "detected_branch",
+        "detected_head_sha",
+        "detected_at",
+        "detected_context",
+    } <= cols
+
+
+def _schema_presence_floor(conn: sqlite3.Connection, claimed: int) -> int:
+    """Verified floor for an adopted ``meta.schema_version`` (#9 guard).
+
+    A ``meta.schema_version`` marker is a CLAIM, not proof. This walks the
+    per-version object requirements UP from the base (v1) and stops at the first
+    KNOWN version (≤ ``HIGHEST_KNOWN_VERSION``) whose objects are missing,
+    returning the last fully-present version — so a DB marked v3 that lacks
+    ``co_change_pairs`` floors to v2 (or v1 if the anchor columns are also gone)
+    and the runner re-applies the missing steps instead of trusting a marker the
+    disk does not back up.
+
+    Two non-floor cases are honoured deliberately:
+
+    - Every checkable (≤ HIGHEST_KNOWN) object is present → the marker is TRUSTED
+      and ``claimed`` is returned UNCHANGED. A genuinely-newer DB (``claimed`` >
+      HIGHEST_KNOWN whose extra v(N>3) objects we cannot enumerate) keeps its
+      ahead marker so the ``> HIGHEST_KNOWN`` branch still fires SCHEMA_VERSION_AHEAD.
+    - ``claimed`` below a check simply skips that check.
+
+    New versions add their object presence check here alongside their migration.
+    """
+
+    floor = 1
+    # v2 (Rung 1b): anchor columns on change_events.
+    if claimed >= 2:
+        if not _change_events_has_anchor_columns(conn):
+            return floor
+        floor = 2
+    # v3 (Rung 2 Track A): the co_change_pairs table.
+    if claimed >= 3:
+        if not _table_exists(conn, "co_change_pairs"):
+            return floor
+        floor = 3
+    # All checkable objects present: trust the marker as-is (never DOWNGRADE a
+    # legitimately-ahead version we simply cannot fully verify).
+    return claimed
+
+
 def _run_migrations(conn: sqlite3.Connection) -> None:
     """Apply ordered forward-only migrations from ``user_version`` to HIGHEST_KNOWN.
 
@@ -295,6 +372,30 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
                     "MIGRATION_META_RECONCILE",
                     f"user_version=0, meta.schema_version={meta_version}; adopted {current}",
                 )
+                # #9: the meta marker is a CLAIM, not proof. A DB that says
+                # version N but is MISSING the schema objects N implies (e.g.
+                # meta='3' with no co_change_pairs table) would otherwise come up
+                # "at v3" and the first coupling query would raise `no such
+                # table`. Verify the objects actually present and DROP current to
+                # the highest version whose objects all exist, so the missing
+                # migrations re-run from a safe floor instead of being skipped on
+                # a false marker.
+                present_floor = _schema_presence_floor(conn, current)
+                if present_floor < current:
+                    logger.warning(
+                        "warpline store: meta.schema_version=%d but on-disk schema "
+                        "objects only present through v%d; re-running migrations "
+                        "from the verified floor",
+                        current,
+                        present_floor,
+                    )
+                    _store_health(
+                        conn,
+                        "MIGRATION_META_SCHEMA_GAP",
+                        f"meta.schema_version={current} but objects present only "
+                        f"through {present_floor}; re-running from floor",
+                    )
+                    current = present_floor
         # Persist the reconciled version once so the next open() short-circuits.
         conn.execute(f"PRAGMA user_version = {current}")
         conn.commit()
@@ -599,9 +700,170 @@ class WarplineStore:
             (merged_first, merged_last, twin_id),
         )
 
+        # #3: co_change_pairs and snapshot_edges reference entity_key_id integers
+        # but have NO foreign key, so deleting the null key would orphan their
+        # rows (and any co_change_partners / snapshot read would still surface the
+        # now-deleted id). Repoint them onto the survivor BEFORE the null-key
+        # DELETE, merging on collision rather than leaving dangling references.
+        self._repoint_co_change_pairs(repo_id, null_key_id, twin_id)
+        self._repoint_snapshot_edges(null_key_id, twin_id)
+
         # Delete the now-orphaned null key (its events were repointed/merged).
         self.conn.execute("DELETE FROM entity_keys WHERE id = ?", (null_key_id,))
         return "merged"
+
+    def _repoint_co_change_pairs(
+        self, repo_id: str, null_key_id: int, twin_id: int
+    ) -> None:
+        """Repoint a null key's co_change_pairs onto its resolved twin (#3).
+
+        co_change_pairs stores pairs canonically (``entity_key_id_a < b``). After
+        repointing one endpoint from ``null_key_id`` to ``twin_id`` a row may:
+
+        - collapse into a SELF-pair (the other endpoint already IS the twin) — a
+          self-coupling is meaningless, so it is DROPPED;
+        - re-canonicalize (the repointed endpoint now sorts the other side of
+          ``a < b``);
+        - COLLIDE with an existing twin pair for the same canonical (a, b) — the
+          two are the SAME unordered pair, so their counts are SUMMED and the
+          later recency marker (``last_co_change`` / ``last_commit_sha``) kept,
+          never lost.
+
+        The caller holds the BEGIN IMMEDIATE txn. We resolve every collision in
+        Python (read both candidate rows, compute the merged row, delete both,
+        re-insert) so the canonical PRIMARY KEY is never violated mid-flight.
+        """
+
+        rows = self.conn.execute(
+            """
+            SELECT entity_key_id_a, entity_key_id_b,
+                   co_change_count, last_co_change, last_commit_sha
+              FROM co_change_pairs
+             WHERE repo_id = ? AND (entity_key_id_a = ? OR entity_key_id_b = ?)
+            """,
+            (repo_id, null_key_id, null_key_id),
+        ).fetchall()
+        for row in rows:
+            old_a = int(row["entity_key_id_a"])
+            old_b = int(row["entity_key_id_b"])
+            # The endpoint that is NOT the null key stays; the null endpoint
+            # becomes the twin.
+            other = old_b if old_a == null_key_id else old_a
+            # Drop the original (null-keyed) row; we re-home its data below.
+            self.conn.execute(
+                "DELETE FROM co_change_pairs "
+                "WHERE repo_id = ? AND entity_key_id_a = ? AND entity_key_id_b = ?",
+                (repo_id, old_a, old_b),
+            )
+            if other == twin_id:
+                # Self-pair after repoint (twin co-changing with itself): drop it.
+                continue
+            new_a, new_b = (twin_id, other) if twin_id < other else (other, twin_id)
+            existing = self.conn.execute(
+                "SELECT co_change_count, last_co_change, last_commit_sha "
+                "FROM co_change_pairs "
+                "WHERE repo_id = ? AND entity_key_id_a = ? AND entity_key_id_b = ?",
+                (repo_id, new_a, new_b),
+            ).fetchone()
+            if existing is None:
+                self.conn.execute(
+                    """
+                    INSERT INTO co_change_pairs(
+                      repo_id, entity_key_id_a, entity_key_id_b,
+                      co_change_count, last_co_change, last_commit_sha
+                    ) VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        repo_id,
+                        new_a,
+                        new_b,
+                        int(row["co_change_count"]),
+                        row["last_co_change"],
+                        row["last_commit_sha"],
+                    ),
+                )
+                continue
+            # Collision with an existing twin pair: SUM counts, keep the later
+            # recency marker (a non-null timestamp always beats null).
+            merged_count = int(existing["co_change_count"]) + int(row["co_change_count"])
+            merged_last, merged_sha = _later_marker(
+                existing["last_co_change"],
+                existing["last_commit_sha"],
+                row["last_co_change"],
+                row["last_commit_sha"],
+            )
+            self.conn.execute(
+                """
+                UPDATE co_change_pairs
+                   SET co_change_count = ?, last_co_change = ?, last_commit_sha = ?
+                 WHERE repo_id = ? AND entity_key_id_a = ? AND entity_key_id_b = ?
+                """,
+                (merged_count, merged_last, merged_sha, repo_id, new_a, new_b),
+            )
+
+    def _repoint_snapshot_edges(self, null_key_id: int, twin_id: int) -> None:
+        """Repoint a null key's snapshot_edges onto its resolved twin (#3).
+
+        snapshot_edges' PRIMARY KEY is
+        ``(snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind)``.
+        Repointing a source or target from the null key to the twin can collide
+        with an edge already recorded under the twin (same snapshot/kind) or
+        collapse a source==target self-edge. ``INSERT OR IGNORE`` into the
+        repointed shape then deleting the null-keyed originals drops duplicates on
+        collision rather than aborting the merge — the twin-keyed row is canonical
+        (mirrors the change_events M5 rule).
+        """
+
+        edges = self.conn.execute(
+            """
+            SELECT snapshot_id, source_entity_key_id, target_entity_key_id,
+                   edge_kind, confidence
+              FROM snapshot_edges
+             WHERE source_entity_key_id = ? OR target_entity_key_id = ?
+            """,
+            (null_key_id, null_key_id),
+        ).fetchall()
+        for edge in edges:
+            self.conn.execute(
+                """
+                DELETE FROM snapshot_edges
+                 WHERE snapshot_id = ? AND source_entity_key_id = ?
+                   AND target_entity_key_id = ? AND edge_kind = ?
+                """,
+                (
+                    edge["snapshot_id"],
+                    edge["source_entity_key_id"],
+                    edge["target_entity_key_id"],
+                    edge["edge_kind"],
+                ),
+            )
+            new_source = (
+                twin_id
+                if int(edge["source_entity_key_id"]) == null_key_id
+                else int(edge["source_entity_key_id"])
+            )
+            new_target = (
+                twin_id
+                if int(edge["target_entity_key_id"]) == null_key_id
+                else int(edge["target_entity_key_id"])
+            )
+            # INSERT OR IGNORE: a collision with an existing twin-keyed edge (or a
+            # duplicate produced by this very repoint) is dropped, not raised.
+            self.conn.execute(
+                """
+                INSERT OR IGNORE INTO snapshot_edges(
+                  snapshot_id, source_entity_key_id, target_entity_key_id,
+                  edge_kind, confidence
+                ) VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    edge["snapshot_id"],
+                    new_source,
+                    new_target,
+                    edge["edge_kind"],
+                    edge["confidence"],
+                ),
+            )
 
     def list_entity_keys(self, repo: Path) -> list[dict[str, object]]:
         repo_id = self._repo_id(repo)
@@ -661,6 +923,24 @@ class WarplineStore:
         )
         self.conn.commit()
 
+    def commit_has_change_events(self, repo_id: str, commit_sha: str) -> bool:
+        """Whether this commit already has any recorded change_events (#2).
+
+        The re-ingest idempotence guard. ``append_change_event`` is idempotent
+        (``INSERT OR IGNORE``) but ``update_co_change_pairs`` is NOT — its counter
+        increments unconditionally — so re-ingesting a commit would double-count
+        every pair and diverge from ``rebuild_co_change_pairs`` (which dedupes by
+        commit group). The caller checks this BEFORE writing any events so that a
+        commit already in the store skips co-change derivation entirely, making a
+        re-run of ``ingest-commit <sha>`` a no-op for counting.
+        """
+
+        row = self.conn.execute(
+            "SELECT 1 FROM change_events WHERE repo_id = ? AND commit_sha = ? LIMIT 1",
+            (repo_id, commit_sha),
+        ).fetchone()
+        return row is not None
+
     def list_change_events(
         self,
         repo: Path,
@@ -673,6 +953,17 @@ class WarplineStore:
         # frame's store support (M4): the COP ``time_window`` frame kind resolves
         # change events by author-time bounds. Additive optional kwargs — existing
         # callers (commit-sha or unfiltered reads) are unaffected.
+        #
+        # #8 mixed-offset correctness: ``changed_at`` is git ``%aI`` — ISO-8601
+        # WITH a tz offset. A raw string ``>=``/``<=`` / ORDER BY would sort
+        # "2024-01-01T09:00:00-05:00" (14:00 UTC) BEFORE
+        # "2024-01-01T10:00:00+00:00" (10:00 UTC), which is wrong. SQLite's
+        # ``datetime()`` parses the offset and normalizes to UTC, so we compare
+        # and order on the normalized instant for the time-window bounds. We
+        # COALESCE back to the raw string so a value ``datetime()`` cannot parse
+        # (it returns NULL) still sorts deterministically by its lexical form
+        # rather than vanishing — an honest fallback, never a silent drop. The
+        # since/until bounds are normalized on BOTH sides for the same reason.
         repo_id = self._repo_id(repo)
         params: list[object] = [repo_id]
         clauses = ""
@@ -683,11 +974,17 @@ class WarplineStore:
             clauses += f" AND ce.commit_sha IN ({placeholders})"
             params.extend(sorted(commit_shas))
         if since is not None:
-            clauses += " AND ce.changed_at >= ?"
-            params.append(since)
+            clauses += (
+                " AND COALESCE(datetime(ce.changed_at), ce.changed_at) "
+                ">= COALESCE(datetime(?), ?)"
+            )
+            params.extend((since, since))
         if until is not None:
-            clauses += " AND ce.changed_at <= ?"
-            params.append(until)
+            clauses += (
+                " AND COALESCE(datetime(ce.changed_at), ce.changed_at) "
+                "<= COALESCE(datetime(?), ?)"
+            )
+            params.extend((until, until))
         rows = self.conn.execute(
             f"""
             SELECT ce.id AS change_event_id, ce.commit_sha, ce.path, ce.change_kind,
@@ -699,7 +996,7 @@ class WarplineStore:
               JOIN entity_keys ek ON ek.id = ce.entity_key_id
              WHERE ce.repo_id = ?
              {clauses}
-             ORDER BY ce.changed_at, ce.id
+             ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
             """,
             params,
         ).fetchall()
@@ -864,9 +1161,14 @@ class WarplineStore:
         ONCE per commit, so the cap is per-commit, not per-locator.
         """
 
-        # B4 kill-switch: WARPLINE_COCHANGE set to "0"/"false"/"no"/"" → skip.
+        # B4 kill-switch: WARPLINE_COCHANGE set to "0"/"false"/"no"/"off" → skip.
+        # An EMPTY string is NOT disabling (#6): empty and unset both mean
+        # default-ON, so an explicitly-blank env var (e.g. ``WARPLINE_COCHANGE=``
+        # exported in a shell rc) does not silently switch derivation off — only an
+        # explicit falsy token does. Treating "" as a kill would be a false-precise
+        # "user opted out" reading of what is really an absent choice.
         raw = os.environ.get("WARPLINE_COCHANGE")
-        if raw is not None and raw.strip().lower() in {"0", "false", "no", "off", ""}:
+        if raw is not None and raw.strip().lower() in {"0", "false", "no", "off"}:
             return {"pairs": 0, "skipped": "kill_switch"}
 
         ids = sorted(set(int(i) for i in entity_key_ids))
@@ -902,8 +1204,28 @@ class WarplineStore:
                     ) VALUES (?, ?, ?, 1, ?, ?)
                     ON CONFLICT(repo_id, entity_key_id_a, entity_key_id_b) DO UPDATE SET
                       co_change_count = co_change_count + 1,
-                      last_co_change  = excluded.last_co_change,
-                      last_commit_sha = excluded.last_commit_sha
+                      -- #7 recency-marker guard: only ADVANCE the markers, and
+                      -- never overwrite a populated timestamp with NULL. Live
+                      -- ingest may arrive out of chronological order (e.g. a hook
+                      -- for an older cherry-picked commit), and a co-change with a
+                      -- NULL changed_at (pre-v2 backfill row) must not wipe a real
+                      -- one. The guard: keep the existing marker unless the new
+                      -- changed_at is non-null AND >= the stored one (a NULL stored
+                      -- marker is always superseded by any non-null incoming).
+                      last_commit_sha = CASE
+                        WHEN excluded.last_co_change IS NOT NULL
+                         AND (last_co_change IS NULL
+                              OR excluded.last_co_change >= last_co_change)
+                        THEN excluded.last_commit_sha
+                        ELSE last_commit_sha
+                      END,
+                      last_co_change = CASE
+                        WHEN excluded.last_co_change IS NOT NULL
+                         AND (last_co_change IS NULL
+                              OR excluded.last_co_change >= last_co_change)
+                        THEN excluded.last_co_change
+                        ELSE last_co_change
+                      END
                     """,
                     (repo_id, key_a, key_b, changed_at, commit_sha),
                 )
@@ -983,20 +1305,31 @@ class WarplineStore:
     def co_change_commit_groups(self, repo: Path) -> list[dict[str, object]]:
         """Group ``change_events`` by commit into ``(commit_sha, [entity_key_id])``.
 
-        The rebuild input: one group per commit, deduplicated entity ids, ordered
-        by commit for deterministic, interruptible rebuilds. ``last_co_change`` is
-        the commit's max ``changed_at`` so a rebuilt row carries the same recency
-        marker as the live ingest path.
+        The rebuild input: one group per commit, deduplicated entity ids.
+        ``last_co_change`` is the commit's max ``changed_at`` so a rebuilt row
+        carries the same recency marker as the live ingest path.
+
+        Ordering (#7): groups are yielded in CHRONOLOGICAL order
+        (``MAX(changed_at)`` then ``commit_sha`` as a deterministic tie-break),
+        NOT lexical commit-sha order. Live ingest advances the recency markers in
+        the order commits actually arrive (≈ chronological), so a rebuild that
+        replayed lexically would converge on the lexically-last commit's
+        ``last_co_change``/``last_commit_sha`` instead of the chronologically
+        latest — diverging from incremental. Replaying in changed_at order makes
+        the two paths converge. The outer GROUP BY is per
+        ``(commit_sha, entity_key_id)``; the window function gives every row of a
+        commit that commit's max changed_at so the ORDER BY groups them together.
         """
 
         repo_id = self._repo_id(repo)
         rows = self.conn.execute(
             """
-            SELECT commit_sha, entity_key_id, MAX(changed_at) AS changed_at
+            SELECT commit_sha, entity_key_id, MAX(changed_at) AS changed_at,
+                   MAX(changed_at) OVER (PARTITION BY commit_sha) AS commit_changed_at
               FROM change_events
              WHERE repo_id = ?
              GROUP BY commit_sha, entity_key_id
-             ORDER BY commit_sha
+             ORDER BY commit_changed_at, commit_sha
             """,
             (repo_id,),
         ).fetchall()

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -402,9 +403,73 @@ def entity_churn_count(
 #
 # Latency note: the first read against an uncaptured repo pays the
 # ``LoomweaveProbe`` first-call cost (~1-5s of `loomweave serve` spin-up plus
-# the scoped capture). This is bounded to once per NO_SNAPSHOT store — the next
-# read sees a snapshot and skips the probe entirely.
+# the scoped capture). When loomweave IS reachable this is bounded to once per
+# NO_SNAPSHOT store — the next read sees a snapshot and skips the probe entirely.
+#
+# When loomweave is ABSENT/unreachable, though, the probe writes no snapshot, so
+# ``latest_snapshot`` stays None and every subsequent read would re-pay the
+# spin-up cost forever. To avoid that, a failed/unavailable probe records a
+# lightweight throttle marker (an ISO timestamp in the ``meta`` table); within a
+# short cooldown the probe is skipped entirely. The marker is per-DB (per-repo)
+# and time-bounded, NOT a permanent disable: once the cooldown elapses the probe
+# is retried, so loomweave coming back online is still picked up. A successful
+# capture leaves a usable snapshot (which short-circuits future reads) and clears
+# the marker. The throttle gates only the probe cost — it never gates the read,
+# which still falls through honestly to NO_SNAPSHOT.
 # ---------------------------------------------------------------------------
+
+# Cooldown between lazy-capture probe attempts when loomweave is unavailable.
+# Short enough that recovery is picked up promptly on the next read after the
+# window; long enough that a burst of reads pays the spin-up cost at most once.
+_LAZY_CAPTURE_COOLDOWN_SECONDS = 300
+_LAZY_CAPTURE_ATTEMPT_META_KEY = "lazy_capture.last_unavailable_at"
+
+
+def _now() -> datetime:
+    """Project clock source (UTC), isolated so tests can pin it. Mirrors the
+    ``datetime.now(UTC)`` used elsewhere (e.g. ``git.py``) — do not introduce a
+    second, divergent time source."""
+
+    return datetime.now(UTC)
+
+
+def _read_lazy_capture_marker(store: WarplineStore) -> datetime | None:
+    """Last recorded unavailable-probe timestamp, or None if absent/unparsable.
+
+    Stored in the base-schema ``meta`` table (no migration); a malformed value is
+    treated as absent (fail-soft) so a corrupt marker can never wedge capture."""
+
+    row = store.conn.execute(
+        "SELECT value FROM meta WHERE key = ?", (_LAZY_CAPTURE_ATTEMPT_META_KEY,)
+    ).fetchone()
+    if row is None:
+        return None
+    try:
+        return datetime.fromisoformat(str(row["value"]))
+    except (ValueError, TypeError):
+        return None
+
+
+def _record_lazy_capture_attempt(store: WarplineStore) -> None:
+    """Stamp the throttle marker so a probe is not retried until the cooldown."""
+
+    store.conn.execute(
+        "INSERT INTO meta(key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (_LAZY_CAPTURE_ATTEMPT_META_KEY, _now().isoformat()),
+    )
+    store.conn.commit()
+
+
+def _clear_lazy_capture_marker(store: WarplineStore) -> None:
+    """Drop the throttle marker once a usable snapshot was captured."""
+
+    store.conn.execute(
+        "DELETE FROM meta WHERE key = ?", (_LAZY_CAPTURE_ATTEMPT_META_KEY,)
+    )
+    store.conn.commit()
+
+
 def _lazy_capture_if_missing(
     store: WarplineStore,
     repo: Path,
@@ -414,20 +479,33 @@ def _lazy_capture_if_missing(
     """Best-effort scoped snapshot when none exists and loomweave is reachable.
 
     Always-on internally; fail-soft. Never raises, never gates: on any failure
-    the caller falls through to the unchanged NO_SNAPSHOT path.
+    the caller falls through to the unchanged NO_SNAPSHOT path. A failed probe is
+    throttled (see the module note above) so an absent loomweave does not re-pay
+    the spin-up cost on every read.
     """
 
     try:
         existing = store.latest_snapshot(repo)
         if existing is not None and existing.get("completeness") != "SKIPPED":
             return  # a usable snapshot already exists — nothing to do.
+        # Throttle: if a recent probe found loomweave unavailable, skip re-probing
+        # until the cooldown elapses (recovery is still retried after the window).
+        last_attempt = _read_lazy_capture_marker(store)
+        if (
+            last_attempt is not None
+            and (_now() - last_attempt).total_seconds() < _LAZY_CAPTURE_COOLDOWN_SECONDS
+        ):
+            return
         # loomweave_command is server/project config (env), NOT public agent
         # input — mirrors capture_snapshot. It is deliberately absent from the
         # frozen tools' inputSchema (M6).
         command = loomweave_command or os.environ.get("WARPLINE_LOOMWEAVE_COMMAND", "loomweave")
         probe = LoomweaveProbe(repo=repo, command=command).probe()
         if probe.get("status") != "available":
-            return  # loomweave absent/unavailable — honest fall-through.
+            # loomweave absent/unavailable — honest fall-through, but record the
+            # attempt so the next read inside the cooldown skips the probe cost.
+            _record_lazy_capture_attempt(store)
+            return
         client = LoomweaveMcpClient(repo=repo, command=command)
         source_version = str(probe.get("version") or "unknown")
         # Scope the capture to the changed seed's locators when known; an empty
@@ -444,6 +522,10 @@ def _lazy_capture_if_missing(
             source_version=source_version,
             scope_locators=scope_locators or None,
         )
+        # A usable snapshot now exists; clear any stale throttle marker so the
+        # store's state is consistent (the snapshot itself short-circuits future
+        # reads).
+        _clear_lazy_capture_marker(store)
     except Exception:  # noqa: BLE001 — capture is advisory; never block the read.
         return
 

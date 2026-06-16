@@ -281,3 +281,168 @@ def test_rebuild_matches_incremental_ingest(tmp_path: Path) -> None:
             ).fetchall()
         ]
     assert live == rebuilt
+
+
+# --- #2: re-ingest must not double-count co-change pairs ----------------------
+
+
+def _pair_counts(store: WarplineStore) -> list[tuple[int, int, int]]:
+    return [
+        (int(r["entity_key_id_a"]), int(r["entity_key_id_b"]), int(r["co_change_count"]))
+        for r in store.conn.execute(
+            "SELECT entity_key_id_a, entity_key_id_b, co_change_count "
+            "FROM co_change_pairs ORDER BY entity_key_id_a, entity_key_id_b"
+        ).fetchall()
+    ]
+
+
+def test_reingest_same_commit_does_not_double_count(tmp_path: Path) -> None:
+    """#2: ingesting a commit twice yields the SAME counts as once, == rebuild.
+
+    ``append_change_event`` is idempotent but ``update_co_change_pairs`` is not,
+    so without the re-ingest guard a second ``ingest_commit`` of the same sha
+    would inflate every pair. The invariant: idempotent live ingest, and the
+    re-ingested counts equal what a rebuild (which dedupes by commit group)
+    produces.
+    """
+
+    repo = _two_coupled_files(tmp_path)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        ingest_commit(store, repo, "HEAD")
+        once = _pair_counts(store)
+        # Re-ingest the identical commit.
+        ingest_commit(store, repo, "HEAD")
+        twice = _pair_counts(store)
+        # Rebuild dedupes by commit group — the ground truth.
+        store.rebuild_co_change_pairs(repo)
+        rebuilt = _pair_counts(store)
+    assert twice == once, "re-ingest must not inflate co_change_count"
+    assert twice == rebuilt, "re-ingest counts must equal rebuild (commit-group dedup)"
+    # The a.py/b.py pair was counted exactly once, not twice.
+    assert once
+    assert all(c == 1 for *_pair, c in once)
+
+
+def test_backfill_overlapping_ranges_do_not_double_count(tmp_path: Path) -> None:
+    """#2: re-running backfill over an already-ingested commit is a counting no-op."""
+    repo = _two_coupled_files(tmp_path)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        backfill(store, repo)
+        once = _pair_counts(store)
+        backfill(store, repo)  # overlapping re-run
+        twice = _pair_counts(store)
+        store.rebuild_co_change_pairs(repo)
+        rebuilt = _pair_counts(store)
+    assert twice == once
+    assert twice == rebuilt
+
+
+# --- #6: empty WARPLINE_COCHANGE is NOT a kill-switch -------------------------
+
+
+def test_empty_env_does_not_disable_co_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#6: WARPLINE_COCHANGE="" means default-ON (empty == unset), not disabled."""
+    monkeypatch.setenv("WARPLINE_COCHANGE", "")
+    db = tmp_path / "warpline.db"
+    with WarplineStore.open(db) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        report = store.update_co_change_pairs(repo_id, "sha1", {1, 2, 3}, changed_at="2024-01-01")
+        # Derivation RAN: pairs were written, no kill-switch skip.
+        assert report == {"pairs": 3}
+        n = store.conn.execute("SELECT COUNT(*) AS c FROM co_change_pairs").fetchone()["c"]
+        assert n == 3
+
+
+def test_blank_whitespace_env_does_not_disable_co_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#6: a whitespace-only value strips to empty → still default-ON."""
+    monkeypatch.setenv("WARPLINE_COCHANGE", "   ")
+    db = tmp_path / "warpline.db"
+    with WarplineStore.open(db) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        report = store.update_co_change_pairs(repo_id, "sha1", {1, 2}, changed_at="2024-01-01")
+        assert report == {"pairs": 1}
+
+
+# --- #7: recency markers converge and never regress to NULL ------------------
+
+
+def test_recency_marker_does_not_advance_for_older_co_change(tmp_path: Path) -> None:
+    """#7: an out-of-order (older) co-change must NOT move the recency marker back."""
+    db = tmp_path / "warpline.db"
+    with WarplineStore.open(db) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        # Newer co-change first, then an OLDER one (e.g. a late hook for an old
+        # cherry-pick). The marker must stay at the newer commit.
+        store.update_co_change_pairs(repo_id, "new", {1, 2}, changed_at="2024-06-01")
+        store.update_co_change_pairs(repo_id, "old", {1, 2}, changed_at="2024-01-01")
+        row = store.conn.execute(
+            "SELECT co_change_count, last_co_change, last_commit_sha "
+            "FROM co_change_pairs WHERE entity_key_id_a=1 AND entity_key_id_b=2"
+        ).fetchone()
+    # Count still bumps; the marker keeps the chronologically-latest commit.
+    assert row["co_change_count"] == 2
+    assert row["last_co_change"] == "2024-06-01"
+    assert row["last_commit_sha"] == "new"
+
+
+def test_null_changed_at_does_not_wipe_populated_marker(tmp_path: Path) -> None:
+    """#7: a later co-change with NULL changed_at must not erase a real timestamp."""
+    db = tmp_path / "warpline.db"
+    with WarplineStore.open(db) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        store.update_co_change_pairs(repo_id, "real", {1, 2}, changed_at="2024-06-01")
+        store.update_co_change_pairs(repo_id, "nullts", {1, 2}, changed_at=None)
+        row = store.conn.execute(
+            "SELECT co_change_count, last_co_change, last_commit_sha "
+            "FROM co_change_pairs WHERE entity_key_id_a=1 AND entity_key_id_b=2"
+        ).fetchone()
+    assert row["co_change_count"] == 2
+    assert row["last_co_change"] == "2024-06-01"
+    assert row["last_commit_sha"] == "real"
+
+
+def test_rebuild_and_incremental_converge_on_recency_marker(tmp_path: Path) -> None:
+    """#7: rebuild replays in chronological order so its markers match live ingest.
+
+    Two commits touch the same file pair; the chronologically-LATER commit sorts
+    LEXICALLY-EARLIER by sha. Live ingest (commit order) leaves the marker on the
+    later commit; a rebuild that replayed lexically would land on the wrong one.
+    They must converge.
+    """
+
+    repo = _init_repo(tmp_path)
+    (repo / "a.py").write_text("x = 1\n", encoding="utf-8")
+    (repo / "b.py").write_text("y = 1\n", encoding="utf-8")
+    _git(repo, "add", "a.py", "b.py")
+    # First commit (older author date) — forced lexically-LATER message/date order
+    # is irrelevant; what matters is author time vs sha order, which git assigns.
+    _git(repo, "commit", "-m", "c1", "--date=2024-01-01T00:00:00+00:00")
+    (repo / "a.py").write_text("x = 2\n", encoding="utf-8")
+    (repo / "b.py").write_text("y = 2\n", encoding="utf-8")
+    _git(repo, "add", "a.py", "b.py")
+    _git(repo, "commit", "-m", "c2", "--date=2024-06-01T00:00:00+00:00")
+
+    with WarplineStore.open(default_store_path(repo)) as store:
+        backfill(store, repo)  # incremental, in commit (chronological) order
+
+        def _markers() -> list[tuple[str | None, str | None]]:
+            return [
+                (r["last_co_change"], r["last_commit_sha"])
+                for r in store.conn.execute(
+                    "SELECT last_co_change, last_commit_sha FROM co_change_pairs "
+                    "ORDER BY entity_key_id_a, entity_key_id_b"
+                ).fetchall()
+            ]
+
+        live_markers = _markers()
+        store.rebuild_co_change_pairs(repo)
+        rebuilt_markers = _markers()
+    assert live_markers == rebuilt_markers
+    # The marker reflects the chronologically-latest commit (2024-06-01), never
+    # whichever sha happens to sort last lexically.
+    assert live_markers
+    assert all(m[0] == "2024-06-01T00:00:00+00:00" for m in live_markers)

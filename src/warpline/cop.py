@@ -132,10 +132,13 @@ def resolve_frame(
       * ``time_window`` — ``{"since": iso, "until": iso}``; events by author-time.
       * ``sei`` — ``{"sei": "..."}`` (or ``{"value": ...}``); the entity timeline.
       * ``edit`` — ``{"rev": "HEAD"}``; events on paths in ``git diff <rev>``.
-      * ``branch_sha`` — ``{"branch": ..., "sha": ...}``; FALLS BACK to a
-        rev-range resolution WITH a warning (``detected_branch`` not yet wired
-        into a frozen read path; episode boundary unratified). This is the honest
-        squash-merge degradation: branch + boundary, never a false-precise set.
+      * ``branch_sha`` — ``{"branch": ..., "sha": ...}``; with a sha (or an
+        explicit ``rev_range``) it FALLS BACK to a rev-range resolution WITH a
+        warning (``detected_branch`` not yet wired into a frozen read path;
+        episode boundary unratified). With NEITHER a sha NOR a rev_range there is
+        no episode boundary to bound the read, so it degrades to an HONEST empty
+        (``unresolved_input``) rather than an unbounded all-history read — branch +
+        boundary, never a false-precise set and never the whole repo dressed up.
 
     The frame echo always carries ``weft_reason_class``:
       * ``clean``           — the frame resolved a non-degraded change set;
@@ -261,6 +264,36 @@ def resolve_frame(
         fallback_range = frame_spec.get("rev_range")
         if not isinstance(fallback_range, str):
             fallback_range = f"{sha}~1..{sha}" if isinstance(sha, str) and sha else None
+        if fallback_range is None:
+            # No sha AND no rev_range → there is no episode boundary to resolve
+            # against. A ``commit_shas=None`` read would return the WHOLE repo
+            # history dressed up as a confident "partial" set — the exact
+            # false-precise output the honesty invariant forbids. Degrade to an
+            # explicit empty carrying ``unresolved_input`` (mirrors the rev_range
+            # frame's vanished-SHAs path): the frame reports it could not establish
+            # a boundary — never that nothing changed, never that everything did.
+            why = reason(
+                "unresolved_input",
+                cause=(
+                    f"branch_sha frame (branch={branch!r}) carried no sha and no rev_range, so "
+                    "it cannot bound an episode — detected_branch is not yet surfaced on a frozen "
+                    "read path and the work-session episode boundary is unratified"
+                ),
+                fix=(
+                    "supply the episode-boundary sha (or an explicit rev_range), or ratify the "
+                    "work-session boundary and wire detected_branch onto a frozen read path so "
+                    "branch_sha can resolve to a precise episode"
+                ),
+            )
+            echo = {
+                "kind": "branch_sha",
+                "branch": branch,
+                "sha": sha,
+                "fallback_rev_range": None,
+                "weft_reason_class": why["reason_class"],
+                "weft_reason": why,
+            }
+            return [], echo, warnings
         warnings.append(
             "branch_sha frame fell back to a rev-range resolution: detected_branch is not yet "
             "surfaced on a frozen read path and the work-session episode boundary is unratified"
