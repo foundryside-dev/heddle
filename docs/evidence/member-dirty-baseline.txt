@@ -1,18 +1,12 @@
 ## /home/john/filigree
- M CHANGELOG.md
- M README.md
- M uv.lock
 ## /home/john/wardline
+ M .github/workflows/release.yml
+ M .gitignore
  M CHANGELOG.md
  M README.md
- M docs/index.md
- M docs/stylesheets/extra.css
- M docs/stylesheets/weft-mkdocs.css
- M mkdocs.yml
- M src/wardline/cli/scan.py
- M tests/unit/cli/test_cli.py
- M www/index.html
- M www/styles.css
+R  AUDIT.md -> docs/audits/2026-06-08-comprehensive-audit.md
+ M docs/integration/2026-06-05-wardline-loomweave-weft-rename.md
+ M pyproject.toml
 ## /home/john/legis
 ## /home/john/loomweave
 ## /home/john/charter
