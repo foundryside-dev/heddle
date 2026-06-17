@@ -62,8 +62,8 @@ const TOOLS = [
 // Honest limits — MANDATORY and non-empty (IA §5.1). Sourced from
 // docs/index.md "Honest status" + docs/federation.md seam labels.
 const LIMITS = [
-  'Warpline is the 5th admitted member (2026-06-14, PDR-0022). The seam *contracts* froze at the launch cutover; the consumer *implementations* for Loomweave / Wardline / Legis are an admitted fast-follow OUTSIDE the four-member launch cutover. Only the Filigree consumer has shipped.',
-  'The Loomweave inbound seam is PROVEN and FROZEN (real SEI resolution + edge capture). The Filigree work-state read is EARNED (consumed by golden vectors). The Wardline risk seam and the Legis rename feed are RESERVED-SHAPE and non-binding — present in the contract, not yet driven by a real sibling; reported as unavailable / absent, never pretended wired.',
+  'Warpline is the 5th admitted member (2026-06-14, PDR-0022) and joined the five-member launch cutover (PDR-0026). The seam *contracts* froze at the cutover; the consumer *implementations* landed incrementally — the Filigree work-state read and the Loomweave SEI/temporal seam are live, the Wardline risk seam is partial (trust-finding enrichment), and the Legis preflight seam is still reserved-shape.',
+  'The Loomweave inbound seam is PROVEN and FROZEN (real SEI resolution + edge capture). The Filigree work-state read is EARNED (consumed by golden vectors). The Wardline risk seam is DRIVEN but partial — trust findings enrich the change-impact worklist (advisory), not yet a risk-weighted blast radius. The Legis preflight seam is RESERVED-SHAPE and non-binding — present in the contract, not yet driven by a real sibling; reported as unavailable / absent, never pretended wired.',
   'Entity extraction is Python-aware (it derives python:function: / python:class: locators from .py sources); other file types are tracked at file:<path> granularity.',
   'Blast-radius is only as complete as the captured snapshot. completeness: NO_SNAPSHOT means "changed set only," never "nothing is affected." A thin answer is reported thin.',
 ];
