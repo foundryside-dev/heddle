@@ -1,6 +1,6 @@
 # Warpline frozen contract (reference)
 
-Authoritative source: `/home/john/weft/pm/2026-06-13-warpline-interface-lock.md`
+Authoritative source: `<weft-root>/pm/2026-06-13-warpline-interface-lock.md`
 (FROZEN). warpline implements TO this contract; it is never edited locally.
 
 ## Success envelope (every outbound tool)

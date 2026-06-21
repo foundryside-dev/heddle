@@ -3,7 +3,7 @@
 Command:
 
 ```bash
-uv run warpline dogfood-eval --real-member-repo /home/john/lacuna --output /tmp/warpline-dogfood-results.json --json
+uv run warpline dogfood-eval --real-member-repo <lacuna-root> --output /tmp/warpline-dogfood-results.json --json
 ```
 
 Result:

@@ -4,22 +4,22 @@ import sys
 from pathlib import Path
 
 REQUIRED_SOURCES = [
-    "/home/john/weft/doctrine.md",
-    "/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md",
-    "/home/john/weft/federation-sdk.md",
-    "/home/john/weft/members/warpline.md",
-    "/home/john/loomweave/README.md",
-    "/home/john/loomweave/crates/loomweave-mcp/src/lib.rs",
-    "/home/john/loomweave/crates/loomweave-cli/src/cli.rs",
-    "/home/john/loomweave/crates/loomweave-storage/src/sei.rs",
-    "/home/john/legis/src/legis/api/app.py",
-    "/home/john/legis/tests/git/test_rename_feed.py",
-    "/home/john/filigree/docs/federation/contracts.md",
-    "/home/john/filigree/tests/fixtures/contracts/weft/scan-results.json",
-    "/home/john/wardline/src/wardline/core/agent_summary.py",
-    "/home/john/wardline/src/wardline/core/filigree_emit.py",
-    "/home/john/charter/src/charter/mcp_surface.py",
-    "/home/john/charter/docs/agentic-doors-replacement-roadmap.md",
+    "<weft-root>/doctrine.md",
+    "<weft-root>/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md",
+    "<weft-root>/federation-sdk.md",
+    "<weft-root>/members/warpline.md",
+    "<loomweave-root>/README.md",
+    "<loomweave-root>/crates/loomweave-mcp/src/lib.rs",
+    "<loomweave-root>/crates/loomweave-cli/src/cli.rs",
+    "<loomweave-root>/crates/loomweave-storage/src/sei.rs",
+    "<legis-root>/src/legis/api/app.py",
+    "<legis-root>/tests/git/test_rename_feed.py",
+    "<filigree-root>/docs/federation/contracts.md",
+    "<filigree-root>/tests/fixtures/contracts/weft/scan-results.json",
+    "<wardline-root>/src/wardline/core/agent_summary.py",
+    "<wardline-root>/src/wardline/core/filigree_emit.py",
+    "<charter-root>/src/charter/mcp_surface.py",
+    "<charter-root>/docs/agentic-doors-replacement-roadmap.md",
 ]
 
 

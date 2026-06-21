@@ -9,7 +9,7 @@
 **Tech Stack:** Python 3.12, uv, stdlib `sqlite3`, stdlib `argparse`, dependency-free JSON-RPC MCP over stdio, pytest, ruff, mypy. SQLite is embedded and one DB per analyzed repo under a Warpline user-data directory.
 
 **Prerequisites:**
-- Work in a dedicated Warpline worktree or branch, with no new changes in `/home/john/filigree`, `/home/john/wardline`, `/home/john/legis`, `/home/john/loomweave`, or `/home/john/charter`.
+- Work in a dedicated Warpline worktree or branch, with no new changes in `<filigree-root>`, `<wardline-root>`, `<legis-root>`, `<loomweave-root>`, or `<charter-root>`.
 - Before executing implementation tasks, record the current sibling dirty state in `docs/evidence/2026-06-13-source-grounding.md`. If any sibling repo is already dirty, treat it as a pre-existing condition and require `scripts/check_no_member_diffs.sh` to fail on any additional unexpected dirty state; do not clean or revert sibling repos from this plan.
 - Install `uv`, `git`, and `sqlite3`.
 - Confirm sibling interfaces from source before coding against them; do not patch sibling repos during Phase 0.
@@ -23,13 +23,13 @@
 
 These facts were checked against local source and override Warpline prose where they differ.
 
-- **Weft product doctrine:** `/home/john/weft/doctrine.md` says Weft is a federation, not a shared runtime/store/broker, and doctrine §7 reserves the future-product go/no-go test: one bounded authority, solo-useful, pairwise-sensible, suite-additive. `/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` names Warpline as the next discovery slot and sets the standing admission bar: dogfood pain evidence, grep-test preference, enrich-only composition, doctrine fit, and hook-fed operation. `/home/john/weft/federation-sdk.md` requires SEI opacity, enrich-only behavior, and honest degradation when sibling capabilities are absent.
-- **Weft Warpline status:** `/home/john/weft/members/warpline.md` says Warpline has no package, CLI, MCP server, or source implementation yet, and describes it as a design spike whose proposed authority is temporal/change-impact. `/home/john/weft/roadmap-ideas.md` says the Warpline idea survives only if it is bounded as temporal graph authority rather than a forbidden aggregator.
-- **Loomweave:** `/home/john/loomweave/README.md` says `loomweave analyze` persists entities and edges to `.weft/loomweave/loomweave.db`, `loomweave serve` exposes about 42 MCP tools, and the core read tools include `entity_find`, `entity_callers_list`, `entity_neighborhood_get`, `entity_source_get`, `entity_resolve`, and `project_status_get`. `/home/john/loomweave/crates/loomweave-mcp/src/lib.rs` defines the live tool list and marks write tools gated. `/home/john/loomweave/crates/loomweave-cli/src/cli.rs` shows `loomweave analyze [path]`, `loomweave serve --path`, `--legis-url`, `--no-sei`, and `--no-incremental`. `/home/john/loomweave/crates/loomweave-storage/src/sei.rs` makes SEI opaque and stored in `sei_bindings`, with `loomweave:eid:*` reserved.
-- **Legis:** `/home/john/legis/README.md` says Legis is the git/CI and governance member; Loomweave remains identity authority, Legis consumes SEI, and its git rename feed is contract-locked. `/home/john/legis/src/legis/api/app.py` exposes `/git/rename-feed`, `/git/renames`, `/git/commits/{sha}`, and governance surfaces. `/home/john/legis/tests/git/test_rename_feed.py` pins committed and worktree rename-feed shapes.
-- **Filigree:** `/home/john/filigree/README.md` says Filigree is the issue/work-state authority with agent-native MCP and CLI. `/home/john/filigree/tests/fixtures/contracts/weft/scan-results.json` pins `POST /api/weft/scan-results` and shows fingerprints and `scan_source` are the durable scanner lifecycle surface. Warpline must not file work by default during Phase 0; post-admission filing is optional enrichment.
-- **Wardline:** `/home/john/wardline/README.md` says Wardline is trust/finding authority; `wardline mcp` exposes `scan`, `explain_taint`, `file_finding`, `assure`, and `attest`. `/home/john/wardline/src/wardline/core/agent_summary.py` makes agent handoff and next-tool-call structure first-class. Warpline must output scoped reverify sets that Wardline can consume later, but Warpline must not re-derive Wardline policy.
-- **Charter:** `/home/john/charter/README.md` says the local core and `charter-mcp` read surface exist, but mutation, live federation calls, impact analysis, durable gaps, import/export, and release-readiness verdicts remain deferred. `/home/john/charter/src/charter/mcp_surface.py` exposes ten read-only, local-only MCP tools and explicitly declares no peer side effects. `/home/john/charter/docs/agentic-doors-replacement-roadmap.md` lists impact analysis as P1 and gives the future `charter impact diff BASE..HEAD --json` shape. Warpline must therefore treat Charter as a post-admission consumer of reverify/impact facts, not as a live impact API.
+- **Weft product doctrine:** `<weft-root>/doctrine.md` says Weft is a federation, not a shared runtime/store/broker, and doctrine §7 reserves the future-product go/no-go test: one bounded authority, solo-useful, pairwise-sensible, suite-additive. `<weft-root>/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` names Warpline as the next discovery slot and sets the standing admission bar: dogfood pain evidence, grep-test preference, enrich-only composition, doctrine fit, and hook-fed operation. `<weft-root>/federation-sdk.md` requires SEI opacity, enrich-only behavior, and honest degradation when sibling capabilities are absent.
+- **Weft Warpline status:** `<weft-root>/members/warpline.md` says Warpline has no package, CLI, MCP server, or source implementation yet, and describes it as a design spike whose proposed authority is temporal/change-impact. `<weft-root>/roadmap-ideas.md` says the Warpline idea survives only if it is bounded as temporal graph authority rather than a forbidden aggregator.
+- **Loomweave:** `<loomweave-root>/README.md` says `loomweave analyze` persists entities and edges to `.weft/loomweave/loomweave.db`, `loomweave serve` exposes about 42 MCP tools, and the core read tools include `entity_find`, `entity_callers_list`, `entity_neighborhood_get`, `entity_source_get`, `entity_resolve`, and `project_status_get`. `<loomweave-root>/crates/loomweave-mcp/src/lib.rs` defines the live tool list and marks write tools gated. `<loomweave-root>/crates/loomweave-cli/src/cli.rs` shows `loomweave analyze [path]`, `loomweave serve --path`, `--legis-url`, `--no-sei`, and `--no-incremental`. `<loomweave-root>/crates/loomweave-storage/src/sei.rs` makes SEI opaque and stored in `sei_bindings`, with `loomweave:eid:*` reserved.
+- **Legis:** `<legis-root>/README.md` says Legis is the git/CI and governance member; Loomweave remains identity authority, Legis consumes SEI, and its git rename feed is contract-locked. `<legis-root>/src/legis/api/app.py` exposes `/git/rename-feed`, `/git/renames`, `/git/commits/{sha}`, and governance surfaces. `<legis-root>/tests/git/test_rename_feed.py` pins committed and worktree rename-feed shapes.
+- **Filigree:** `<filigree-root>/README.md` says Filigree is the issue/work-state authority with agent-native MCP and CLI. `<filigree-root>/tests/fixtures/contracts/weft/scan-results.json` pins `POST /api/weft/scan-results` and shows fingerprints and `scan_source` are the durable scanner lifecycle surface. Warpline must not file work by default during Phase 0; post-admission filing is optional enrichment.
+- **Wardline:** `<wardline-root>/README.md` says Wardline is trust/finding authority; `wardline mcp` exposes `scan`, `explain_taint`, `file_finding`, `assure`, and `attest`. `<wardline-root>/src/wardline/core/agent_summary.py` makes agent handoff and next-tool-call structure first-class. Warpline must output scoped reverify sets that Wardline can consume later, but Warpline must not re-derive Wardline policy.
+- **Charter:** `<charter-root>/README.md` says the local core and `charter-mcp` read surface exist, but mutation, live federation calls, impact analysis, durable gaps, import/export, and release-readiness verdicts remain deferred. `<charter-root>/src/charter/mcp_surface.py` exposes ten read-only, local-only MCP tools and explicitly declares no peer side effects. `<charter-root>/docs/agentic-doors-replacement-roadmap.md` lists impact analysis as P1 and gives the future `charter impact diff BASE..HEAD --json` shape. Warpline must therefore treat Charter as a post-admission consumer of reverify/impact facts, not as a live impact API.
 
 ## Delivery Shape
 
@@ -73,22 +73,22 @@ from pathlib import Path
 
 
 REQUIRED_SOURCES = [
-    "/home/john/weft/doctrine.md",
-    "/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md",
-    "/home/john/weft/federation-sdk.md",
-    "/home/john/weft/members/warpline.md",
-    "/home/john/loomweave/README.md",
-    "/home/john/loomweave/crates/loomweave-mcp/src/lib.rs",
-    "/home/john/loomweave/crates/loomweave-cli/src/cli.rs",
-    "/home/john/loomweave/crates/loomweave-storage/src/sei.rs",
-    "/home/john/legis/src/legis/api/app.py",
-    "/home/john/legis/tests/git/test_rename_feed.py",
-    "/home/john/filigree/docs/federation/contracts.md",
-    "/home/john/filigree/tests/fixtures/contracts/weft/scan-results.json",
-    "/home/john/wardline/src/wardline/core/agent_summary.py",
-    "/home/john/wardline/src/wardline/core/filigree_emit.py",
-    "/home/john/charter/src/charter/mcp_surface.py",
-    "/home/john/charter/docs/agentic-doors-replacement-roadmap.md",
+    "<weft-root>/doctrine.md",
+    "<weft-root>/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md",
+    "<weft-root>/federation-sdk.md",
+    "<weft-root>/members/warpline.md",
+    "<loomweave-root>/README.md",
+    "<loomweave-root>/crates/loomweave-mcp/src/lib.rs",
+    "<loomweave-root>/crates/loomweave-cli/src/cli.rs",
+    "<loomweave-root>/crates/loomweave-storage/src/sei.rs",
+    "<legis-root>/src/legis/api/app.py",
+    "<legis-root>/tests/git/test_rename_feed.py",
+    "<filigree-root>/docs/federation/contracts.md",
+    "<filigree-root>/tests/fixtures/contracts/weft/scan-results.json",
+    "<wardline-root>/src/wardline/core/agent_summary.py",
+    "<wardline-root>/src/wardline/core/filigree_emit.py",
+    "<charter-root>/src/charter/mcp_surface.py",
+    "<charter-root>/docs/agentic-doors-replacement-roadmap.md",
 ]
 
 
@@ -144,32 +144,32 @@ missing docs/evidence/2026-06-13-source-grounding.md
 - `spike/REPORT.md` is the required authority for design-spike findings.
 - Product release work proceeds only on `Recommendation: go`.
 - Owner admission is required before member-side consumer wiring.
-- Phase 0 rule: no sibling repo patches in `/home/john/filigree`, `/home/john/wardline`, `/home/john/loomweave`, `/home/john/legis`, or `/home/john/charter`.
+- Phase 0 rule: no sibling repo patches in `<filigree-root>`, `<wardline-root>`, `<loomweave-root>`, `<legis-root>`, or `<charter-root>`.
 - Pre-existing sibling dirty state must be recorded before implementation starts. This plan does not authorize cleaning, reverting, or patching sibling repos.
 
 ## Sources Checked
-- `/home/john/weft/doctrine.md` — federation doctrine, enrich-only, no shared runtime/store/broker, owner admission test.
-- `/home/john/weft/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` — Warpline discovery slot and agentic-first bar.
-- `/home/john/weft/federation-sdk.md` — member obligations, SEI opacity, honest degradation.
-- `/home/john/weft/members/warpline.md` — Warpline is design spike; no implementation yet.
-- `/home/john/loomweave/README.md` — graph/identity authority and live MCP families.
-- `/home/john/loomweave/crates/loomweave-mcp/src/lib.rs` — live MCP tool names.
-- `/home/john/loomweave/crates/loomweave-cli/src/cli.rs` — `analyze`, `serve`, `--legis-url`, `--no-sei`, `--no-incremental`.
-- `/home/john/loomweave/crates/loomweave-storage/src/sei.rs` — SEI prefix, opacity, lineage storage.
-- `/home/john/legis/src/legis/api/app.py` — git and governance HTTP routes.
-- `/home/john/legis/tests/git/test_rename_feed.py` — rename-feed shape and worktree flag semantics.
-- `/home/john/filigree/docs/federation/contracts.md` — named HTTP generations and `weft` envelope discipline.
-- `/home/john/filigree/tests/fixtures/contracts/weft/scan-results.json` — scan-results contract fixture.
-- `/home/john/wardline/src/wardline/core/agent_summary.py` — agent summary schema and next-action discipline.
-- `/home/john/wardline/src/wardline/core/filigree_emit.py` — native Filigree emit shape and fail-soft enrichment.
-- `/home/john/charter/src/charter/mcp_surface.py` — local-only read MCP tools and contract resources.
-- `/home/john/charter/docs/agentic-doors-replacement-roadmap.md` — impact analysis is P1/deferred and Charter integration is planned.
+- `<weft-root>/doctrine.md` — federation doctrine, enrich-only, no shared runtime/store/broker, owner admission test.
+- `<weft-root>/pm/product/decisions/0013-post-launch-priority-stack-and-discovery-pipeline.md` — Warpline discovery slot and agentic-first bar.
+- `<weft-root>/federation-sdk.md` — member obligations, SEI opacity, honest degradation.
+- `<weft-root>/members/warpline.md` — Warpline is design spike; no implementation yet.
+- `<loomweave-root>/README.md` — graph/identity authority and live MCP families.
+- `<loomweave-root>/crates/loomweave-mcp/src/lib.rs` — live MCP tool names.
+- `<loomweave-root>/crates/loomweave-cli/src/cli.rs` — `analyze`, `serve`, `--legis-url`, `--no-sei`, `--no-incremental`.
+- `<loomweave-root>/crates/loomweave-storage/src/sei.rs` — SEI prefix, opacity, lineage storage.
+- `<legis-root>/src/legis/api/app.py` — git and governance HTTP routes.
+- `<legis-root>/tests/git/test_rename_feed.py` — rename-feed shape and worktree flag semantics.
+- `<filigree-root>/docs/federation/contracts.md` — named HTTP generations and `weft` envelope discipline.
+- `<filigree-root>/tests/fixtures/contracts/weft/scan-results.json` — scan-results contract fixture.
+- `<wardline-root>/src/wardline/core/agent_summary.py` — agent summary schema and next-action discipline.
+- `<wardline-root>/src/wardline/core/filigree_emit.py` — native Filigree emit shape and fail-soft enrichment.
+- `<charter-root>/src/charter/mcp_surface.py` — local-only read MCP tools and contract resources.
+- `<charter-root>/docs/agentic-doors-replacement-roadmap.md` — impact analysis is P1/deferred and Charter integration is planned.
 ```
 
 Create `docs/evidence/member-dirty-baseline.txt` with the exact output of:
 
 ```bash
-for repo in /home/john/filigree /home/john/wardline /home/john/legis /home/john/loomweave /home/john/charter; do
+for repo in <filigree-root> <wardline-root> <legis-root> <loomweave-root> <charter-root>; do
   printf '## %s\n' "$repo"
   git -C "$repo" status --short || true
 done
@@ -1717,7 +1717,7 @@ Expected output:
 passed
 ```
 
-Run: `uv run warpline loomweave-probe --repo /home/john/loomweave --json`
+Run: `uv run warpline loomweave-probe --repo <loomweave-root> --json`
 
 Expected output shape:
 
@@ -2044,7 +2044,7 @@ from warpline.loomweave import LoomweaveProbe
 
 
 def test_live_loomweave_probe_reports_surface() -> None:
-    repo = Path("/home/john/loomweave")
+    repo = Path("<loomweave-root>")
     result = LoomweaveProbe(repo=repo).probe()
     if result["status"] == "skipped":
         pytest.skip(f"loomweave unavailable for live probe: {result}")
@@ -2686,7 +2686,7 @@ Add a script-content test in the same file:
 ```python
 def test_no_member_diff_script_covers_all_members() -> None:
     text = Path("scripts/check_no_member_diffs.sh").read_text(encoding="utf-8")
-    for repo in ("/home/john/filigree", "/home/john/wardline", "/home/john/legis", "/home/john/loomweave", "/home/john/charter"):
+    for repo in ("<filigree-root>", "<wardline-root>", "<legis-root>", "<loomweave-root>", "<charter-root>"):
         assert repo in text
     assert "member-dirty-baseline.txt" in text
 ```
@@ -2701,7 +2701,7 @@ baseline="docs/evidence/member-dirty-baseline.txt"
 current="$(mktemp)"
 trap 'rm -f "$current"' EXIT
 
-for repo in /home/john/filigree /home/john/wardline /home/john/legis /home/john/loomweave /home/john/charter; do
+for repo in <filigree-root> <wardline-root> <legis-root> <loomweave-root> <charter-root>; do
   printf '## %s\n' "$repo" >>"$current"
   if [ -d "$repo/.git" ]; then
     git -C "$repo" status --short >>"$current"
@@ -2822,11 +2822,11 @@ FAILED test_spike_report_has_recommendation_line
 set -euo pipefail
 
 repos=(
-  /home/john/warpline
-  /home/john/filigree
-  /home/john/wardline
-  /home/john/legis
-  /home/john/loomweave
+  <warpline-root>
+  <filigree-root>
+  <wardline-root>
+  <legis-root>
+  <loomweave-root>
 )
 
 tmp_repo="$(mktemp -d)"
@@ -2840,7 +2840,7 @@ git -C "$tmp_repo" commit -m 'planted initial'
 printf 'def planted():\n    return 2\n' >"$tmp_repo/planted.py"
 git -C "$tmp_repo" commit -am 'planted change'
 
-uv run warpline loomweave-probe --repo /home/john/loomweave --json
+uv run warpline loomweave-probe --repo <loomweave-root> --json
 
 for repo in "${repos[@]}"; do
   uv run warpline backfill --repo "$repo" --json

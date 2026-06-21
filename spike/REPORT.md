@@ -28,7 +28,7 @@ Live-review blockers retired in this repo:
 
 Status: available.
 
-Evidence from `uv run warpline loomweave-probe --repo /home/john/loomweave --json`:
+Evidence from `uv run warpline loomweave-probe --repo <loomweave-root> --json`:
 
 ```json
 {
@@ -49,11 +49,11 @@ The live tool inventory also includes `entity_high_churn_list` and `entity_recen
 
 ## Q1b: Edge Snapshot Adapter
 
-Unit evidence confirms Warpline preserves caller/callee direction from Loomweave neighborhood payloads. Live evidence confirms `/home/john/loomweave` exposes `entity_neighborhood_get`; Warpline still records dated snapshots only and does not answer current structure as its own authority.
+Unit evidence confirms Warpline preserves caller/callee direction from Loomweave neighborhood payloads. Live evidence confirms `<loomweave-root>` exposes `entity_neighborhood_get`; Warpline still records dated snapshots only and does not answer current structure as its own authority.
 
 ## Q2: Snapshot Honesty and Planted-Change Results
 
-The spike harness uses a bounded planted git repository for repeatable measurements and live member checks only for lightweight federation surface probes. An earlier unbounded live-member backfill attempt against `/home/john/filigree` exceeded four minutes, so the release harness was refactored to avoid making Warpline harder to operate than current grep/manual workflows.
+The spike harness uses a bounded planted git repository for repeatable measurements and live member checks only for lightweight federation surface probes. An earlier unbounded live-member backfill attempt against `<filigree-root>` exceeded four minutes, so the release harness was refactored to avoid making Warpline harder to operate than current grep/manual workflows.
 
 Current measured evidence from `spike/measurements.json`:
 
@@ -78,7 +78,7 @@ The planted-change query returned `python:function:planted.py::planted` for `HEA
 ## Q4: Grep-Test Dogfood Notes
 
 The release dogfood path now runs a real-member benchmark instead of relying on
-the planted corpus for parity. It clones `/home/john/lacuna`, copies the live
+the planted corpus for parity. It clones `<lacuna-root>`, copies the live
 Loomweave index, backfills Warpline, runs MCP `capture_snapshot`, selects a
 historical code change with non-empty reverify output, executes the baseline
 `git diff --name-only` plus `rg` workflow, then compares MCP `changed ->

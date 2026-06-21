@@ -1,7 +1,7 @@
 # Warpline Federation Contracts
 
 Status: **FROZEN at the clean-break launch cutover** (owner nod 2026-06-13).
-Authoritative source: `/home/john/weft/pm/2026-06-13-warpline-interface-lock.md`.
+Authoritative source: `<weft-root>/pm/2026-06-13-warpline-interface-lock.md`.
 Implement TO this contract; a v2 is a new URI, never a mutation of v1.
 
 Warpline exposes read-only, local-first CLI and MCP surfaces over its temporal

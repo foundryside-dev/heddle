@@ -1,9 +1,9 @@
 # Warpline Implementation Goal Prompt
 
 ```text
-Implement Warpline to completion from /home/john/warpline/docs/plans/2026-06-13-warpline-1-0-readiness.md.
+Implement Warpline to completion from <warpline-root>/docs/plans/2026-06-13-warpline-1-0-readiness.md.
 
-Treat the plan as the starting artifact, not as unquestionable truth. First orient in /home/john/warpline and the relevant federation repos: /home/john/weft, /home/john/loomweave, /home/john/filigree, /home/john/wardline, /home/john/legis, and /home/john/charter. Verify current source reality before coding against any sibling interface.
+Treat the plan as the starting artifact, not as unquestionable truth. First orient in <warpline-root> and the relevant federation repos: <weft-root>, <loomweave-root>, <filigree-root>, <wardline-root>, <legis-root>, and <charter-root>. Verify current source reality before coding against any sibling interface.
 
 Primary objective:
 Deliver Warpline as a local-first, MCP-facing temporal change-impact product that can integrate cleanly into the Weft federation. Warpline must answer what changed, who/when, what downstream entities may be affected, and what should be reverified, while preserving federation authority boundaries. The current product verdict is not-ready; do not promote Warpline until executable evidence proves solo parity and federation uplift.
