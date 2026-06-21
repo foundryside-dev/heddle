@@ -70,7 +70,9 @@ The planted-change query returned `python:function:planted.py::planted` for `HEA
 - Warpline imports no sibling packages.
 - Warpline stores temporal change and dated snapshot facts only.
 - Warpline does not own current structure, work state, trust policy, governance, or requirements.
-- Member dirty state is compared against `docs/evidence/member-dirty-baseline.txt`.
+- Member dirty state can be compared against `docs/evidence/member-dirty-baseline.txt`
+  only as an explicit local opt-in (`WARPLINE_CHECK_MEMBER_DIFFS=1`); release and
+  spike gates do not depend on sibling working-tree drift by default.
 - Missing graph enrichment produces `NO_SNAPSHOT`, `SKIPPED`, or absent enrichment fields.
 
 ## Q4: Grep-Test Dogfood Notes

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-bash scripts/check_no_member_diffs.sh
+bash scripts/maybe_check_member_diffs.sh
 
 tmp_repo="$(mktemp -d)"
 trap 'rm -rf "$tmp_repo"' EXIT
@@ -59,4 +59,4 @@ if not target.exists() or os.environ.get("WARPLINE_UPDATE_SPIKE_MEASUREMENTS") =
 PY
 
 uv run pytest tests -v
-bash scripts/check_no_member_diffs.sh
+bash scripts/maybe_check_member_diffs.sh
