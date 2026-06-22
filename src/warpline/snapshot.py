@@ -96,7 +96,7 @@ def capture_edge_snapshot(
         commit_sha=resolved_commit,
         source="loomweave",
         source_version=source_version,
-        completeness="FULL",
+        completeness="DELTA",
     )
     store.clear_snapshot_edges(snapshot_id)
 
@@ -128,14 +128,13 @@ def capture_edge_snapshot(
     # A capped capture is structurally partial: it is missing entities it knows
     # exist. Treat that exactly like a per-entity failure — DELTA, not FULL.
     completeness = "DELTA" if (failures or capped) else "FULL"
-    if failures or capped:
-        store.create_edge_snapshot(
-            repo_id=repo_id,
-            commit_sha=resolved_commit,
-            source="loomweave",
-            source_version=source_version,
-            completeness=completeness,
-        )
+    snapshot_id = store.create_edge_snapshot(
+        repo_id=repo_id,
+        commit_sha=resolved_commit,
+        source="loomweave",
+        source_version=source_version,
+        completeness=completeness,
+    )
 
     return {
         "query": "capture_snapshot",

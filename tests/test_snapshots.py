@@ -28,6 +28,30 @@ class FakeNeighborhoodClient:
         }
 
 
+class MidCaptureReaderClient:
+    def __init__(self, db_path: Path, repo: Path) -> None:
+        self.db_path = db_path
+        self.repo = repo
+        self.observed_latest: dict[str, object] | None = None
+        self.observed_edges: list[dict[str, object]] = []
+
+    def neighborhood(self, entity: str) -> dict[str, object]:
+        with WarplineStore.open(self.db_path) as reader:
+            self.observed_latest = reader.latest_snapshot(self.repo)
+            if self.observed_latest is not None:
+                self.observed_edges = reader.snapshot_edges(int(self.observed_latest["id"]))
+        if entity == "python:function:a":
+            return {
+                "entity": {"id": "python:function:a"},
+                "callees": [{"id": "python:function:b"}],
+                "truncated": {"callers": False, "callees": False},
+            }
+        return {
+            "entity": {"id": entity},
+            "truncated": {"callers": False, "callees": False},
+        }
+
+
 class TruncatedNeighborhoodClient:
     def neighborhood(self, entity: str) -> dict[str, object]:
         return {
@@ -133,6 +157,37 @@ def test_capture_edge_snapshot_resolves_symbolic_commit_before_storing(
 
     assert stale["staleness"]["snapshot_commit"] == first
     assert stale["staleness"]["commits_behind"] == 1
+
+
+def test_capture_edge_snapshot_does_not_publish_full_until_edges_complete(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    db_path = tmp_path / "warpline.db"
+    client = MidCaptureReaderClient(db_path, repo)
+    with WarplineStore.open(db_path) as store:
+        repo_id = store.ensure_repo(repo)
+        store.ensure_entity_key(repo_id, locator="python:function:a", sei=None, commit_sha="c1")
+        result = capture_edge_snapshot(
+            store,
+            repo,
+            commit_sha="c1",
+            client=client,
+            source_version="test-client",
+        )
+        final_snapshot = store.latest_snapshot(repo)
+        assert final_snapshot is not None
+        final_edges = store.snapshot_edges(int(final_snapshot["id"]))
+
+    assert client.observed_edges == []
+    assert (
+        client.observed_latest is None
+        or client.observed_latest["completeness"] != "FULL"
+    )
+    assert result["completeness"] == "FULL"
+    assert final_snapshot["completeness"] == "FULL"
+    assert len(final_edges) == 1
 
 
 def test_capture_edge_snapshot_maps_loomweave_ids_back_to_warpline_keys(tmp_path: Path) -> None:
