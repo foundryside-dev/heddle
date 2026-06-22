@@ -1479,6 +1479,10 @@ class WarplineStore:
     ) -> int:
         """Capture a snapshot correct-by-construction in ONE transaction.
 
+        Precondition: callers must not hold an open implicit transaction on
+        ``self.conn`` — every preceding DML (e.g. ``ensure_entity_key``) must
+        already be committed before this method is called.
+
         Upserts the ``edge_snapshots`` row, replaces its edges, and sets the
         final ``completeness`` inside a single ``BEGIN IMMEDIATE``..``COMMIT``.
         No intermediate COMMIT is issued, so a reader on another connection (WAL)
