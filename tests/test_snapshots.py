@@ -61,6 +61,20 @@ class TruncatedNeighborhoodClient:
         }
 
 
+class ExplodingNeighborhoodClient:
+    """Raises a NON-Exception (BaseException) on the FIRST neighborhood call so
+    capture cannot swallow it via its ``except Exception`` per-entity guard
+    (snapshot.py:111). Models a hard mid-capture kill (e.g. Loomweave process
+    crash / KeyboardInterrupt) that must NOT degrade the prior snapshot."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def neighborhood(self, entity: str) -> dict[str, object]:
+        self.calls.append(entity)
+        raise KeyboardInterrupt("loomweave killed mid-capture")
+
+
 class LoomweaveIdNeighborhoodClient:
     def __init__(self) -> None:
         self.calls: list[str] = []
@@ -361,3 +375,46 @@ def test_capture_edge_snapshot_degrades_truncated_neighborhood_to_delta(
     ]
     assert snapshot["completeness"] == "DELTA"
     assert edges == []
+
+
+def test_capture_failure_preserves_prior_full_snapshot(tmp_path: Path) -> None:
+    """Fail-closed: a hard mid-capture failure leaves the PRIOR FULL snapshot
+    (and its edges) intact and visible, never a degraded DELTA/0-edge row."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    db_path = tmp_path / "warpline.db"
+
+    # First capture: a clean FULL snapshot with one edge.
+    with WarplineStore.open(db_path) as store:
+        repo_id = store.ensure_repo(repo)
+        store.ensure_entity_key(repo_id, locator="python:function:a", sei=None, commit_sha="c1")
+        first = capture_edge_snapshot(
+            store, repo, commit_sha="c1", client=FakeNeighborhoodClient(),
+            source_version="v1",
+        )
+        prior = store.latest_snapshot(repo)
+        assert prior is not None
+        prior_id = int(prior["id"])
+        prior_edges = store.snapshot_edges(prior_id)
+    assert first["completeness"] == "FULL"
+    assert len(prior_edges) == 1
+
+    # Second capture for the SAME (repo, commit) dies mid-loop.
+    with WarplineStore.open(db_path) as store:
+        try:
+            capture_edge_snapshot(
+                store, repo, commit_sha="c1", client=ExplodingNeighborhoodClient(),
+                source_version="v2",
+            )
+        except KeyboardInterrupt:
+            pass
+
+    # The prior FULL snapshot must survive unchanged.
+    with WarplineStore.open(db_path) as store:
+        after = store.latest_snapshot(repo)
+        assert after is not None
+        after_edges = store.snapshot_edges(int(after["id"]))
+    assert after["id"] == prior_id
+    assert after["completeness"] == "FULL"
+    assert after["source_version"] == "v1"
+    assert len(after_edges) == 1
