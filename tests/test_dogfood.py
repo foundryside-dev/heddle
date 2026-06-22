@@ -4,9 +4,22 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import git as _git
+from conftest import init_repo as _init_repo
 
 from warpline import cli
-from warpline.dogfood import run_dogfood_evaluator
+from warpline.dogfood import _select_real_member_rev_range, run_dogfood_evaluator
+from warpline.git import backfill
+from warpline.store import WarplineStore, default_store_path
+
+
+def _commit_file(repo: Path, path: str, body: str, message: str) -> str:
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    _git(repo, "add", path)
+    _git(repo, "commit", "-m", message)
+    return _git(repo, "rev-parse", "HEAD")
 
 
 def test_dogfood_evaluator_writes_required_machine_readable_contract(
@@ -71,6 +84,22 @@ def test_cli_dogfood_eval_writes_output(tmp_path: Path) -> None:
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["ready"] is False
+
+
+def test_real_member_selector_skips_commits_without_executable_baseline(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    _commit_file(repo, "README.md", "# demo\n", "initial")
+    code_sha = _commit_file(repo, "src/tool.py", "def target():\n    return 1\n", "code")
+    _commit_file(repo, "site/package.json", "{}\n", "package metadata")
+
+    with WarplineStore.open(default_store_path(repo)) as store:
+        backfill(store, repo)
+
+    rev_range, _selected = _select_real_member_rev_range(repo)
+
+    assert rev_range == f"{code_sha}^..{code_sha}"
 
 
 def test_cli_dogfood_eval_accepts_custom_real_member_repo(

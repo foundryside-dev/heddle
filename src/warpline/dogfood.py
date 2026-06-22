@@ -427,7 +427,13 @@ def _select_real_member_rev_range(repo: Path) -> tuple[str, str]:
         )
         items = reverify_env["data"].get("items")
         if isinstance(items, list) and items:
-            return rev_range, "first historical commit with non-empty reverify worklist"
+            baseline = _executed_baseline(repo, rev_range)
+            if baseline.get("baseline_executed") is not True:
+                continue
+            return (
+                rev_range,
+                "first historical commit with executable baseline and non-empty reverify worklist",
+            )
     raise RuntimeError("no real member commit produced a non-empty reverify worklist")
 
 
