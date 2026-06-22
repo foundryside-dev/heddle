@@ -418,3 +418,36 @@ def test_capture_failure_preserves_prior_full_snapshot(tmp_path: Path) -> None:
     assert after["completeness"] == "FULL"
     assert after["source_version"] == "v1"
     assert len(after_edges) == 1
+
+
+def test_capture_snapshot_atomic_replaces_edges_in_one_transaction(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
+        repo_id = store.ensure_repo(repo)
+        a = store.ensure_entity_key(repo_id, locator="python:function:a", sei=None, commit_sha="c1")
+        b = store.ensure_entity_key(repo_id, locator="python:function:b", sei=None, commit_sha="c1")
+
+        sid1 = store.capture_snapshot_atomic(
+            repo_id=repo_id, commit_sha="c1", source="loomweave",
+            source_version="v1", completeness="FULL",
+            edges=[(a, b, "calls", "resolved")],
+        )
+        assert store.latest_snapshot(repo)["completeness"] == "FULL"
+        assert len(store.snapshot_edges(sid1)) == 1
+
+        # Re-capture same (repo, commit, source): same id, edges REPLACED not appended.
+        sid2 = store.capture_snapshot_atomic(
+            repo_id=repo_id, commit_sha="c1", source="loomweave",
+            source_version="v2", completeness="DELTA",
+            edges=[(b, a, "calls", "resolved")],
+        )
+        assert sid2 == sid1
+        snap = store.latest_snapshot(repo)
+        assert snap["completeness"] == "DELTA"
+        assert snap["source_version"] == "v2"
+        edges = store.snapshot_edges(sid2)
+    assert edges == [
+        {"source_entity_key_id": b, "target_entity_key_id": a,
+         "edge_kind": "calls", "confidence": "resolved"}
+    ]
