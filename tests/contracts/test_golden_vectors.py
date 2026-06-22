@@ -1,4 +1,4 @@
-"""The 14 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
+"""The 15 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
 
 These are warpline's contribution as the 5th producer to the four-member
 conformance oracle (GS-7). Each test is one frozen (input → output assertion)
