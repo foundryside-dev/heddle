@@ -43,14 +43,15 @@ The package installs two entry points:
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `WARPLINE_LOOMWEAVE_COMMAND` | `loomweave` | The loomweave executable warpline shells out to for SEI resolution and edge capture (used by `backfill`, `ingest-commit`, `loomweave-probe`, and `capture-snapshot`). It is **server/project config**, not public agent input. |
+| `FILIGREE_API_URL` | `http://localhost:8724` | The filigree dashboard HTTP API base URL used for work-state enrichment when MCP `reverify` / `warpline_reverify_worklist_get` runs with `include_federation=true`. If the dashboard is unreachable, warpline degrades to work `unavailable` / filigree `unreachable` instead of treating the absence as clean. |
 
-Honest scope: the env var is consulted on the **MCP** path (where the tools take
-no loomweave-command argument). On the **CLI**, the corresponding flag
-(`--loomweave-command`, or `--command` for `loomweave-probe`) defaults to the
-literal `loomweave`, which is truthy and therefore **shadows the env var** unless
-you pass the flag an explicit value. To point the CLI at a non-default loomweave,
-pass the flag — setting only `WARPLINE_LOOMWEAVE_COMMAND` will not change CLI
-behavior.
+Loomweave scope: `WARPLINE_LOOMWEAVE_COMMAND` is consulted on the **MCP** path
+(where the tools take no loomweave-command argument). On the **CLI**, the
+corresponding flag (`--loomweave-command`, or `--command` for `loomweave-probe`)
+defaults to the literal `loomweave`, which is truthy and therefore **shadows the
+env var** unless you pass the flag an explicit value. To point the CLI at a
+non-default loomweave, pass the flag — setting only
+`WARPLINE_LOOMWEAVE_COMMAND` will not change CLI behavior.
 
 ## Exit codes
 

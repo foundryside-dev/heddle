@@ -59,6 +59,15 @@ consumed by golden vectors — and strictly advisory:
 Proposed work surfaces as *candidates* in `data.next_actions.filigree[]`, for a
 human or a write-capable tool to act on.
 
+The live HTTP transport is operator-configurable. For MCP `reverify` /
+`warpline_reverify_worklist_get` calls with `include_federation=true`, warpline
+constructs its filigree work client from `FILIGREE_API_URL`; the default is
+`http://localhost:8724`. Set the variable when the filigree dashboard listens on
+a different host or port. If the dashboard is absent or unreachable, warpline
+records the filigree member as `unreachable`, leaves `next_actions.filigree[]`
+empty, reports work enrichment as `unavailable`, and still returns the local
+change-impact worklist.
+
 ### wardline — risk (RESERVED-SHAPE, non-binding)
 
 The wardline risk seam is reserved in the contract but not yet driven by a real
@@ -98,7 +107,7 @@ end.
 | Sibling | Present + indexed | Absent / unreachable |
 | --- | --- | --- |
 | loomweave | SEIs resolve (`sei: present`); snapshots capture (`edges: present`, `completeness: FULL`). | `sei: unavailable`/`absent`; `capture_snapshot` → `completeness: SKIPPED`, `source_version: no_index`; impact/reverify → `NO_SNAPSHOT`. |
-| filigree | Worklist gains `priority` and `enrichment.work: present`. | `work: unavailable`; `priority: unknown`; `next_actions.filigree` empty. |
+| filigree | Worklist gains `priority` and `enrichment.work: present` from the dashboard at `FILIGREE_API_URL` (default `http://localhost:8724`). | Member `unreachable`; `work: unavailable`; `priority: unknown`; `next_actions.filigree` empty. |
 | wardline | `risk: present`. | `risk: unavailable` — never `clean`. |
 | legis / feed | timeline stitched across renames; `governance: present`. | `governance: unavailable`; raw-git fallback. |
 

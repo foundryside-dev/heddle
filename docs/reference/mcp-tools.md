@@ -319,6 +319,14 @@ warpline — `unknown` when there is no work seam. `next_actions.filigree[]` hol
 when work links were seen, `absent` when the filigree peer was consulted but had
 none, `unavailable` when there was no work client.
 
+When `include_federation=true`, the filigree work client reads the dashboard HTTP
+API at `FILIGREE_API_URL` (default `http://localhost:8724`) for ADR-029 entity
+association reverse lookups and issue records. Point `FILIGREE_API_URL` at a
+non-default dashboard when filigree is not running locally. If that API is absent
+or unreachable, the response stays local-only and records work enrichment as
+`unavailable` with the filigree member reason `unreachable`; this is not a
+confident empty result.
+
 ---
 
 ## `warpline_edge_snapshot_capture` / `capture_snapshot`

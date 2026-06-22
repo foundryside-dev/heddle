@@ -187,6 +187,12 @@ The loomweave command warpline uses for SEI resolution / edge capture is
 server/project config — set `WARPLINE_LOOMWEAVE_COMMAND` (default `loomweave`); it
 is **not** a public MCP tool argument. `git add -A` never stages a warpline DB.
 
+Filigree work-state enrichment uses filigree's dashboard HTTP API when a reverify
+request sets `include_federation=true`. Set `FILIGREE_API_URL` to point warpline
+at a non-default dashboard; the default is `http://localhost:8724`. If the
+dashboard is absent or unreachable, warpline reports work enrichment as
+`unavailable` / member `unreachable` and still returns the local worklist.
+
 ## Development
 
 ```bash
