@@ -18,7 +18,9 @@ def _minimal_env(**kw):
 
 def test_envelope_defaults_enrichment_reasons_to_empty_map() -> None:
     env = _minimal_env()
-    assert env["enrichment_reasons"] == {}
+    # requirements is seeded reserved-but-honest on every envelope; nothing else.
+    assert set(env["enrichment_reasons"]) == {"requirements"}
+    assert env["enrichment_reasons"]["requirements"]["reason_class"] == "disabled"
 
 
 def test_envelope_carries_a_reason_triple_alongside_the_scalar() -> None:

@@ -1,14 +1,17 @@
 """Pure staleness/completeness enrichment helpers (internal API).
 
 Extracted from ``commands.py`` (Rung 0). Dependency is strictly one-way:
-``commands.py -> _enrichment``; this module imports nothing from warpline and is
-structurally incapable of gating (enrich-only doctrine, verified by its import
-list: only ``typing.Any``). No store, no git, no I/O.
+``commands.py -> _enrichment``; this module imports only from ``warpline.listing``
+(no store, no git, no I/O — enrich-only doctrine preserved) and is structurally
+incapable of gating (enrich-only doctrine, verified by its import list: only
+``typing.Any`` and ``warpline.listing.reason``). No store, no git, no I/O.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from warpline.listing import reason
 
 # enrichment.edges value for each completeness level.
 EDGES_FOR_COMPLETENESS = {
@@ -74,3 +77,27 @@ def completeness_warnings(completeness: str) -> list[str]:
         "SKIPPED": ["SKIPPED: graph snapshot was skipped; changed set only"],
         "DELTA": ["DELTA: graph snapshot is partial; inspect failed_entities or staleness"],
     }.get(completeness, [])
+
+
+def requirements_reason() -> dict[str, Any]:
+    """The stable reserved-but-honest triple for the ``requirements`` dimension.
+
+    ``requirements`` is in the FROZEN enrichment vocab but no requirements-trace
+    transport is wired today. It defaults to scalar ``unavailable``; this triple
+    makes that absence EXPLAINED (reserved, not yet wired) rather than a bare,
+    unexplained scalar. Reuses the canonical ``disabled`` class (no transport) —
+    no new reason_class, so the frozen canonical-11 contract is untouched.
+    """
+
+    return reason(
+        "disabled",
+        cause=(
+            "the requirements dimension is reserved in the frozen enrichment vocab but no "
+            "requirements-trace transport is wired in warpline yet"
+        ),
+        fix=(
+            "wire a requirements-trace consumer (e.g. a legis/requirements read keyed on the "
+            "SEI) and populate enrichment.requirements; until then it is honestly reserved, "
+            "not an earned-empty"
+        ),
+    )

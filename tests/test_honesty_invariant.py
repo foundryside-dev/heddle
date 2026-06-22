@@ -411,3 +411,24 @@ def test_capture_if_stale_after_short_circuits(tmp_path: Path) -> None:
     envelope = commands.capture_snapshot(repo, if_stale_after=captured_at)
     assert envelope["data"]["idempotency"] == "already_current"
     assert any(w.startswith("FRESH:") for w in envelope["warnings"])
+
+
+# --------------------------------------------------------------------------- (d)
+def test_requirements_is_reserved_but_honest_on_every_tool(tmp_path: Path) -> None:
+    """The reserved-but-inert ``requirements`` dimension must explain itself.
+
+    ``requirements`` rides as scalar ``unavailable`` on every envelope but has no
+    transport wired. Rather than a bare, unexplained scalar, it carries a stable
+    ``disabled`` triple naming WHY (reserved, not yet wired) and the fix (the work
+    that would wire it). The scalar value is unchanged — only the triple is added.
+    """
+
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "a = 1\n")
+    env = commands.change_list(repo)
+
+    assert env["enrichment"]["requirements"] == "unavailable"  # scalar untouched
+    triple = env["enrichment_reasons"]["requirements"]
+    assert triple["reason_class"] == "disabled"
+    assert "reserved" in triple["cause"].lower()
+    assert triple["fix"]

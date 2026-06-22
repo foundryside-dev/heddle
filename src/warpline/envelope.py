@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from warpline import __version__
+from warpline._enrichment import requirements_reason
 from warpline.listing import REASON_CLASSES
 
 # FROZEN canonical success envelope (see interface-lock §0). enrichment values
@@ -74,7 +75,7 @@ def build_envelope(
     for key, value in enrich.items():
         if key not in ENRICHMENT_VOCAB or value not in ENRICHMENT_VOCAB[key]:
             raise ValueError(f"enrichment.{key}={value!r} violates the closed vocabulary")
-    reasons = enrichment_reasons or {}
+    reasons = {"requirements": requirements_reason(), **(enrichment_reasons or {})}
     for dim, carrier in reasons.items():
         if dim not in ENRICHMENT_VOCAB:
             raise ValueError(
