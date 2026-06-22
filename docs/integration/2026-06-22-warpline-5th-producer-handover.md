@@ -8,7 +8,7 @@ boundary: warpline's grant is repo-local; GS-7 inclusion and the glossary freeze
 are the owner's act.)
 
 Producer: warpline (admitted 2026-06-13 as the federation's 5th member, PDR-0022).
-Branch of record: harden/exec.
+Branch of record: plan/spine-hardening (work executed in worktree branch harden/exec).
 
 ## 1. What 5th-producer conformance is
 
@@ -49,7 +49,7 @@ objects. This package ADDS 4:
 - **Success envelope** (`warpline.<contract>.v1`): keys `{schema, ok, query, data,
   warnings, next_actions, enrichment, meta}`. `meta.local_only` is always `true`;
   `meta.peer_side_effects` is always `[]`.
-- **Enrichment vocab** (CLOSED, `src/warpline/envelope.py:10-17`): 6 keys —
+- **Enrichment vocab** (CLOSED, `src/warpline/envelope.py:12-19`): 6 keys —
   `sei` / `work` / `risk` / `governance` / `requirements` ∈ {present, absent,
   unavailable}; `edges` ∈ {present, absent, stale, partial, skipped, unavailable}.
 - **Weft-reason triple** (`src/warpline/listing.py`): `{reason_class, cause, fix}`,
