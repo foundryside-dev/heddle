@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -31,8 +32,9 @@ class FakeLoomweaveStdin:
         self.proc = proc
         self.closed = False
 
-    def write(self, text: str) -> int:
-        for line in text.splitlines():
+    def write(self, text: str | bytes) -> int:
+        raw_text = text.decode("utf-8") if isinstance(text, bytes) else text
+        for line in raw_text.splitlines():
             request = json.loads(line)
             entity_id = request["params"]["arguments"]["id"]
             payload = {
@@ -56,7 +58,7 @@ class FakeLoomweaveStdin:
             }
             self.proc.requests.append(request)
             self.proc.stdout.lines.append(json.dumps(envelope) + "\n")
-        return len(text)
+        return len(raw_text)
 
     def flush(self) -> None:
         return None
@@ -96,6 +98,15 @@ class FakeLoomweaveProcess:
 
     def kill(self) -> None:
         self.returncode = -9
+
+
+class PipeStdoutProcess:
+    def __init__(self, stdout: object) -> None:
+        self.stdout = stdout
+        self.stderr = None
+
+    def poll(self) -> int | None:
+        return None
 
 
 FAKE_LOOMWEAVE_PROCESSES: list[FakeLoomweaveProcess] = []
@@ -156,3 +167,28 @@ def test_mcp_client_reuses_one_stdio_session_for_multiple_tool_calls(
         request["params"]["arguments"]["id"]  # type: ignore[index]
         for request in FAKE_LOOMWEAVE_PROCESSES[0].requests
     ] == ["python:function:a", "python:function:b"]
+    assert FAKE_LOOMWEAVE_PROCESSES[0].kwargs["stderr"] == subprocess.DEVNULL
+
+
+def test_mcp_client_reads_buffered_response_after_non_json_line(tmp_path: Path) -> None:
+    read_fd, write_fd = os.pipe()
+    envelope = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"ok": True, "result": {"entity": {"id": "x"}}}),
+                }
+            ]
+        },
+    }
+    os.write(write_fd, b"loomweave log line\n" + json.dumps(envelope).encode() + b"\n")
+    reader = os.fdopen(read_fd, "r", encoding="utf-8")
+    try:
+        client = LoomweaveMcpClient(tmp_path, timeout=0.01)
+        assert client._read_envelope(PipeStdoutProcess(reader), 1) == envelope  # type: ignore[arg-type]
+    finally:
+        reader.close()
+        os.close(write_fd)

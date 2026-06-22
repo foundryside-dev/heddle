@@ -22,7 +22,11 @@ from warpline.listing import (
     apply_page,
     apply_sort,
 )
-from warpline.loomweave import LoomweaveMcpClient, LoomweaveProbe
+from warpline.loomweave import (
+    LoomweaveMcpClient,
+    LoomweaveProbe,
+    loomweave_resolve_qualnames,
+)
 from warpline.propagation import blast_radius as compute_blast_radius
 from warpline.refs import (
     changed_ref_for_row,
@@ -66,6 +70,95 @@ def _close_if_supported(client: object | None) -> None:
     close = getattr(client, "close", None)
     if callable(close):
         close()
+
+
+def _capture_scope_from_refs(
+    store: WarplineStore,
+    repo: Path,
+    refs: list[dict[str, str]],
+) -> tuple[set[str], list[dict[str, str]]]:
+    rows = store.list_entity_keys(repo)
+    scope: set[str] = set()
+    failures: list[dict[str, str]] = []
+    for ref in refs:
+        matches = [
+            row
+            for row in rows
+            if _capture_scope_row_matches_ref(row, ref["kind"], ref["value"])
+        ]
+        if matches:
+            for row in matches:
+                locator = row.get("locator")
+                if isinstance(locator, str) and locator:
+                    scope.add(locator)
+            continue
+        failures.append(
+            {
+                "locator": f"{ref['kind']}:{ref['value']}",
+                "reason": _capture_scope_failure_reason(ref["kind"]),
+            }
+        )
+    return scope, failures
+
+
+def _capture_scope_failure_reason(kind: str) -> str:
+    if kind == "sei":
+        return "sei_not_in_snapshot"
+    if kind == "warpline_entity_key_id":
+        return "unknown_entity_key_id"
+    return "ref_not_in_snapshot"
+
+
+def _capture_scope_row_matches_ref(row: dict[str, object], kind: str, value: str) -> bool:
+    locator = row.get("locator")
+    if not isinstance(locator, str) or not locator:
+        return False
+    sei = row.get("sei")
+    if kind == "sei":
+        return sei == value
+    if kind == "locator":
+        return locator == value
+    if kind == "warpline_entity_key_id":
+        return str(row.get("id")) == value
+    if kind == "path":
+        return _locator_matches_path(locator, value)
+    if kind == "qualname":
+        return _locator_matches_qualname(locator, value)
+    if kind == "auto":
+        return (
+            locator == value
+            or sei == value
+            or _locator_matches_path(locator, value)
+            or _locator_matches_qualname(locator, value)
+        )
+    return False
+
+
+def _locator_matches_path(locator: str, value: str) -> bool:
+    path = value.removeprefix("file:")
+    if locator in {value, f"file:{path}"}:
+        return True
+    if locator.startswith("file:"):
+        return locator.removeprefix("file:") == path
+    split = _python_locator_parts(locator)
+    return split is not None and split[0] == path
+
+
+def _locator_matches_qualname(locator: str, value: str) -> bool:
+    if locator == value:
+        return True
+    split = _python_locator_parts(locator)
+    if split is not None and split[1] == value:
+        return True
+    return value in loomweave_resolve_qualnames(locator)
+
+
+def _python_locator_parts(locator: str) -> tuple[str, str] | None:
+    if not locator.startswith(("python:function:", "python:class:")) or "::" not in locator:
+        return None
+    _namespace, _kind, body = locator.split(":", 2)
+    path, qualname = body.split("::", 1)
+    return path, qualname
 
 
 def _page(limit: int) -> dict[str, Any]:
@@ -904,16 +997,21 @@ def capture_snapshot(
     status = probe.get("status")
     source_version = str(probe.get("version") or probe.get("reason") or "unknown")
     client_available = status == "available"
-    scope_locators = (
-        {ref["value"] for ref in refs if ref["kind"] in {"locator", "qualname", "path"}}
-        if mode == "changed_only"
-        else None
-    )
     with WarplineStore.open(default_store_path(repo)) as store:
         existing = store.latest_snapshot(repo)
         had_snapshot = existing is not None
         warnings: list[str] = []
         data: dict[str, Any]
+        scope_locators: set[str] | None = None
+        scope_failures: list[dict[str, str]] = []
+        if mode == "changed_only":
+            scope_locators, scope_failures = _capture_scope_from_refs(store, repo, refs)
+            if scope_failures:
+                failed_refs = ", ".join(failure["locator"] for failure in scope_failures)
+                warnings.append(
+                    "UNRESOLVED_SCOPE: changed_only refs did not resolve to stored "
+                    f"entity keys: {failed_refs}"
+                )
         # if_stale_after: a current snapshot captured at-or-after the watermark is
         # fresh enough; honor the short-circuit instead of blindly recapturing.
         if (
@@ -939,7 +1037,10 @@ def capture_snapshot(
                 f"after if_stale_after={stale_after}; recapture skipped"
             )
         elif dry_run:
-            completeness = "FULL" if client_available else "SKIPPED"
+            if client_available:
+                completeness = "DELTA" if scope_failures else "FULL"
+            else:
+                completeness = "SKIPPED"
             data = {
                 "snapshot_id": None,
                 "commit_sha": commit,
@@ -948,7 +1049,7 @@ def capture_snapshot(
                 "completeness": completeness,
                 "entities": 0,
                 "edges": 0,
-                "failed_entities": [],
+                "failed_entities": scope_failures,
                 "idempotency": "dry_run",
                 "idempotency_key": idem_key,
             }
@@ -962,6 +1063,7 @@ def capture_snapshot(
                     client=client,
                     source_version=source_version,
                     scope_locators=scope_locators,
+                    scope_failures=scope_failures,
                     max_entities=cap,
                 )
             finally:

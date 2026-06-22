@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import io
 import json
+import os
 import selectors
 import shutil
 import subprocess
@@ -77,8 +79,9 @@ class LoomweaveMcpClient:
         self.repo = repo
         self.command = command
         self.timeout = timeout
-        self._process: subprocess.Popen[str] | None = None
+        self._process: subprocess.Popen[bytes] | None = None
         self._next_request_id = 0
+        self._stdout_buffer = b""
 
     def __enter__(self) -> LoomweaveMcpClient:
         return self
@@ -125,7 +128,7 @@ class LoomweaveMcpClient:
         if proc.stdin is None:
             raise RuntimeError("loomweave serve stdin unavailable")
         try:
-            proc.stdin.write(json.dumps(request) + "\n")
+            proc.stdin.write((json.dumps(request) + "\n").encode("utf-8"))
             proc.stdin.flush()
             envelope = self._read_envelope(proc, request_id)
         except (BrokenPipeError, TimeoutError) as exc:
@@ -133,20 +136,20 @@ class LoomweaveMcpClient:
             raise RuntimeError(str(exc)) from exc
         return self._payload_from_envelope(envelope)
 
-    def _ensure_process(self) -> subprocess.Popen[str]:
+    def _ensure_process(self) -> subprocess.Popen[bytes]:
         if self._process is not None and self._process.poll() is None:
             return self._process
         self.close()
+        self._stdout_buffer = b""
         self._process = subprocess.Popen(
             [self.command, "serve", "--path", str(self.repo)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
+            stderr=subprocess.DEVNULL,
         )
         return self._process
 
-    def _read_envelope(self, proc: subprocess.Popen[str], request_id: int) -> dict[str, Any]:
+    def _read_envelope(self, proc: subprocess.Popen[bytes], request_id: int) -> dict[str, Any]:
         if proc.stdout is None:
             raise RuntimeError("loomweave serve stdout unavailable")
         while True:
@@ -166,26 +169,51 @@ class LoomweaveMcpClient:
                 continue
             return envelope
 
-    def _readline(self, stdout: IO[str]) -> str:
-        try:
-            stdout.fileno()
-        except (AttributeError, OSError, ValueError):
+    def _readline(self, stdout: IO[Any]) -> str:
+        if isinstance(stdout, io.TextIOBase):
             return stdout.readline()
+        buffered = self._pop_stdout_line()
+        if buffered is not None:
+            return buffered
+        try:
+            fd = stdout.fileno()
+        except (AttributeError, OSError, ValueError):
+            line = stdout.readline()
+            if isinstance(line, bytes):
+                return line.decode("utf-8", errors="replace")
+            return str(line)
         selector = selectors.DefaultSelector()
         try:
-            selector.register(stdout, selectors.EVENT_READ)
+            selector.register(fd, selectors.EVENT_READ)
             events = selector.select(self.timeout)
         finally:
             selector.close()
         if not events:
             raise TimeoutError("loomweave serve timed out before returning a response")
-        return stdout.readline()
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            if self._stdout_buffer:
+                buffered = self._stdout_buffer.decode("utf-8", errors="replace")
+                self._stdout_buffer = b""
+                return buffered
+            return ""
+        self._stdout_buffer += chunk
+        buffered = self._pop_stdout_line()
+        if buffered is not None:
+            return buffered
+        return self._readline(stdout)
 
-    def _stderr_tail(self, proc: subprocess.Popen[str]) -> str:
+    def _pop_stdout_line(self) -> str | None:
+        if b"\n" not in self._stdout_buffer:
+            return None
+        line, self._stdout_buffer = self._stdout_buffer.split(b"\n", 1)
+        return line.decode("utf-8", errors="replace")
+
+    def _stderr_tail(self, proc: subprocess.Popen[bytes]) -> str:
         if proc.stderr is None or proc.poll() is None:
             return ""
         try:
-            return proc.stderr.read()[-1000:]
+            return proc.stderr.read()[-1000:].decode("utf-8", errors="replace")
         except OSError:
             return ""
 

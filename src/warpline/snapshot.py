@@ -50,6 +50,7 @@ def capture_edge_snapshot(
     client: NeighborhoodClient | None,
     source_version: str,
     scope_locators: set[str] | None = None,
+    scope_failures: list[dict[str, str]] | None = None,
     max_entities: int | None = None,
 ) -> dict[str, Any]:
     repo_id = store.ensure_repo(repo)
@@ -102,7 +103,7 @@ def capture_edge_snapshot(
 
     edge_count = 0
     snapshot_edges: list[tuple[int, int, str, str]] = []
-    failures: list[dict[str, str]] = []
+    failures: list[dict[str, str]] = list(scope_failures or [])
     for locator, query_entity in query_entities:
         try:
             neighborhood = client.neighborhood(query_entity)
@@ -120,6 +121,8 @@ def capture_edge_snapshot(
             snapshot_edges.append((source_id, target_id, edge_kind, "resolved"))
             edge_count += 1
     store.append_snapshot_edges(snapshot_id, snapshot_edges)
+    if scope_locators is not None and not query_entities and not failures:
+        failures.append({"locator": "<changed_only_scope>", "reason": "empty_scope"})
 
     # A capped capture is structurally partial: it is missing entities it knows
     # exist. Treat that exactly like a per-entity failure — DELTA, not FULL.

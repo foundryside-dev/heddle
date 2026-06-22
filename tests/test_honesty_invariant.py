@@ -230,6 +230,108 @@ def test_capture_changed_only_requires_refs(tmp_path: Path) -> None:
         commands.capture_snapshot(repo, mode="changed_only")
 
 
+class _QuietCaptureClient:
+    def __init__(self, repo: Path, command: str = "loomweave") -> None:
+        self.calls: list[str] = []
+
+    def neighborhood(self, entity: str) -> dict[str, object]:
+        self.calls.append(entity)
+        return {"entity": {"id": entity}, "truncated": {"callers": False, "callees": False}}
+
+    def close(self) -> None:
+        return None
+
+
+def _make_loomweave_available(monkeypatch: pytest.MonkeyPatch) -> _QuietCaptureClient:
+    client = _QuietCaptureClient(Path("."))
+    monkeypatch.setattr(
+        commands.LoomweaveProbe,
+        "probe",
+        lambda self: {"status": "available", "version": "test-loomweave"},
+    )
+    monkeypatch.setattr(commands, "LoomweaveMcpClient", lambda **kwargs: client)
+    return client
+
+
+@pytest.mark.parametrize(
+    ("ref", "expected_query_entity"),
+    [
+        (
+            {"kind": "path", "value": "src/pkg/app.py"},
+            "python:function:pkg.app.target",
+        ),
+        (
+            {"kind": "qualname", "value": "pkg.app.target"},
+            "python:function:pkg.app.target",
+        ),
+        (
+            {"kind": "sei", "value": "loomweave:eid:target"},
+            "python:function:pkg.app.target",
+        ),
+    ],
+)
+def test_capture_changed_only_resolves_public_scope_refs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ref: dict[str, str],
+    expected_query_entity: str,
+) -> None:
+    repo = _init_repo(tmp_path)
+    (repo / "src/pkg").mkdir(parents=True)
+    head = _commit(repo, "src/pkg/app.py", "def target():\n    return 1\n")
+    client = _make_loomweave_available(monkeypatch)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        store.ensure_entity_key(
+            repo_id,
+            locator="python:function:src/pkg/app.py::target",
+            sei="loomweave:eid:target",
+            commit_sha=head,
+        )
+
+    envelope = commands.capture_snapshot(
+        repo,
+        mode="changed_only",
+        changed_refs=[ref],
+    )
+
+    assert envelope["data"]["completeness"] == "FULL"
+    assert envelope["data"]["entities"] == 1
+    assert client.calls == [expected_query_entity]
+
+
+def test_capture_changed_only_unresolved_scope_is_delta_not_full(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_repo(tmp_path)
+    (repo / "src/pkg").mkdir(parents=True)
+    head = _commit(repo, "src/pkg/app.py", "def target():\n    return 1\n")
+    client = _make_loomweave_available(monkeypatch)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        store.ensure_entity_key(
+            repo_id,
+            locator="python:function:src/pkg/app.py::target",
+            sei="loomweave:eid:target",
+            commit_sha=head,
+        )
+
+    envelope = commands.capture_snapshot(
+        repo,
+        mode="changed_only",
+        changed_refs=[{"kind": "sei", "value": "loomweave:eid:missing"}],
+    )
+
+    assert envelope["data"]["completeness"] == "DELTA"
+    assert envelope["data"]["entities"] == 0
+    assert envelope["data"]["failed_entities"] == [
+        {"locator": "sei:loomweave:eid:missing", "reason": "sei_not_in_snapshot"}
+    ]
+    assert envelope["enrichment"]["edges"] == "partial"
+    assert client.calls == []
+
+
 def test_capture_echoes_idempotency_key(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     _commit(repo, "a.py", "a = 1\n")
