@@ -6,16 +6,16 @@
 
 **Architecture:** The frozen success envelope's `enrichment` block is a CLOSED SCALAR dict validated value-by-value in `build_envelope` (`envelope.py:72-74`), so a triple (a dict) cannot ride inside it. This plan introduces ONE additive top-level carrier — `enrichment_reasons: dict[str, dict[str, Any]]` — threaded through `build_envelope` as a new optional keyword. Each dimension maps to a `listing.reason()` triple. New pure helpers `sei_reason()` and `requirements_reason()` live in `_enrichment.py` (the no-I/O module the spec names as the pattern), `governance`'s triple is emitted inline in `entity_timeline`, and all reason classes reuse the existing canonical 11 (no contract-affecting vocab change).
 
-**Tech Stack:** Python 3.12, ruff (lint), pyright (types), pytest (tests). Real-git fixtures via `tests/conftest.py` (`init_repo`/`commit`) and direct `WarplineStore` seeding.
+**Tech Stack:** Python 3.12, ruff (lint), mypy (types), pytest (tests). Real-git fixtures via `tests/conftest.py` (`init_repo`/`commit`) and direct `WarplineStore` seeding.
 
 ## Global Constraints
-Python repo. Tooling: ruff (lint), pyright (types), pytest (tests). TDD throughout.
+Python repo. Tooling: ruff (lint), mypy (types), pytest (tests). TDD throughout.
 Sequencing is VECTORS-FIRST: each plan opens by writing the failing golden vector / test that expresses the invariant, THEN the implementation makes it green.
 WS1 capture changes are OUTPUT-SHAPE-PRESERVING: the response envelope stays byte-identical; only edge-visibility timing and row lifecycle change.
 Enrichment vocab is a CLOSED, FROZEN contract in src/warpline/envelope.py (keys: sei, edges, work, risk, governance, requirements). Do NOT add or remove keys. The `requirements` key stays (resolved as reserved-but-honest).
 The weft-reason triple is `cause + reason_class + fix`, built ONLY via src/warpline/listing.py `reason()` factory (non-"clean" reason_class requires both cause and fix).
 Every response MUST keep `meta.local_only: true` and `meta.peer_side_effects: []`. Never break the frozen golden vectors or the success/error envelope schema.
-Gates that must stay green: `warpline dogfood-eval`, `warpline mcp-smoke`, ruff, pyright, pytest, and the member-diff guard.
+Gates that must stay green: `warpline dogfood-eval`, `warpline mcp-smoke`, ruff, mypy, pytest, and the member-diff guard.
 Authority boundary: all work is reversible and repo-local. The hub handover document is a DRAFT package — it creates no hub/sibling work and freezes nothing.
 Commit messages end with the trailer: Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 
@@ -180,9 +180,9 @@ Expected: all pass (no assertion in those files inspects `enrichment_reasons` ye
 
 - [ ] Lint + type-check the changed file:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/envelope.py tests/test_envelope_reasons.py && pyright src/warpline/envelope.py
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/envelope.py tests/test_envelope_reasons.py && uv run mypy src/warpline
 ```
-Expected: `All checks passed!` from ruff; `0 errors` from pyright. NOTE: `envelope.py` now imports `listing`. Confirm no import cycle was introduced:
+Expected: `All checks passed!` from ruff; `0 errors` from mypy. NOTE: `envelope.py` now imports `listing`. Confirm no import cycle was introduced:
 ```bash
 cd "$(git rev-parse --show-toplevel)" && python -c "import warpline.envelope; import warpline.listing; print('no cycle')"
 ```
@@ -190,7 +190,7 @@ Expected: `no cycle`. (`listing.py` imports only `warpline.errors`, never `envel
 
 - [ ] Commit:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && git checkout -b harden/honesty-completeness && git add src/warpline/envelope.py tests/test_envelope_reasons.py && git commit -m "feat(envelope): add additive enrichment_reasons carrier for weft-reason triples
+cd "$(git rev-parse --show-toplevel)" && git add src/warpline/envelope.py tests/test_envelope_reasons.py && git commit -m "feat(envelope): add additive enrichment_reasons carrier for weft-reason triples
 
 The closed scalar enrichment vocab cannot hold a triple (dict) without
 tripping build_envelope validation, so the cause+reason_class+fix triple
@@ -345,9 +345,9 @@ Expected: `5 passed`.
 
 - [ ] Lint + type-check:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/_enrichment.py src/warpline/envelope.py && pyright src/warpline/_enrichment.py src/warpline/envelope.py
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/_enrichment.py src/warpline/envelope.py && uv run mypy src/warpline
 ```
-Expected: ruff `All checks passed!`; pyright `0 errors`.
+Expected: ruff `All checks passed!`; mypy `0 errors`.
 
 - [ ] Commit:
 ```bash
@@ -476,9 +476,9 @@ Expected: `5 passed`.
 
 - [ ] Lint + type-check:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/_enrichment.py tests/test_enrichment_helpers.py && pyright src/warpline/_enrichment.py
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/_enrichment.py tests/test_enrichment_helpers.py && uv run mypy src/warpline
 ```
-Expected: ruff `All checks passed!`; pyright `0 errors`.
+Expected: ruff `All checks passed!`; mypy `0 errors`.
 
 - [ ] Commit:
 ```bash
@@ -669,9 +669,9 @@ Expected: `1 passed`.
 
 - [ ] Lint + type-check:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/commands.py && pyright src/warpline/commands.py
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/commands.py && uv run mypy src/warpline
 ```
-Expected: ruff `All checks passed!`; pyright `0 errors`.
+Expected: ruff `All checks passed!`; mypy `0 errors`.
 
 - [ ] Commit:
 ```bash
@@ -845,9 +845,9 @@ Expected: `2 passed`.
 
 - [ ] Lint + type-check:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/commands.py && pyright src/warpline/commands.py
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline/commands.py && uv run mypy src/warpline
 ```
-Expected: ruff `All checks passed!`; pyright `0 errors`.
+Expected: ruff `All checks passed!`; mypy `0 errors`.
 
 - [ ] Commit:
 ```bash
@@ -873,15 +873,15 @@ The honesty-completeness invariants must be locked as frozen golden vectors so t
 
 **Interfaces:**
 - Consumes: `commands.change_list`, `commands.capture_snapshot`, `commands.entity_timeline` (unchanged signatures); the `enrichment_reasons` carrier (Task 1).
-- Produces: 3 new frozen golden vectors (GV-LW-6 sei triple, GV-LG-4 governance triple, GV-RQ-1 requirements reserved).
+- Produces: 3 new frozen golden vectors (GV-HON-SEI sei triple, GV-HON-GOV governance triple, GV-HON-REQ requirements reserved).
 
 **Steps:**
 
-- [ ] Write the new vectors. In `tests/contracts/test_golden_vectors.py`, append after line 359:
+- [ ] Write the new vectors. In `tests/contracts/test_golden_vectors.py`, append after line 407 (end of file, after `test_gv_lg_3`):
 ```python
 # ============================================================ honesty completeness (WS2)
-def test_gv_lw_6_sei_absence_carries_explained_triple(tmp_path: Path) -> None:
-    """GV-LW-6: sei absence is EXPLAINED — change_list with no SEI emits
+def test_gv_hon_sei_sei_absence_carries_explained_triple(tmp_path: Path) -> None:
+    """GV-HON-SEI: sei absence is EXPLAINED — change_list with no SEI emits
     sei:absent + unresolved_input triple; capture with Loomweave down emits
     sei:unavailable + unreachable triple. Never a bare, unexplained scalar."""
 
@@ -899,8 +899,8 @@ def test_gv_lw_6_sei_absence_carries_explained_triple(tmp_path: Path) -> None:
     assert captured["enrichment_reasons"]["sei"]["reason_class"] == "unreachable"
 
 
-def test_gv_lg_4_timeline_governance_carries_explained_triple(tmp_path: Path) -> None:
-    """GV-LG-4: entity_timeline governance is EXPLAINED — present->clean with a
+def test_gv_hon_gov_timeline_governance_carries_explained_triple(tmp_path: Path) -> None:
+    """GV-HON-GOV: entity_timeline governance is EXPLAINED — present->clean with a
     rename feed, disabled (no transport) without one."""
 
     repo = _git_repo(tmp_path)
@@ -921,8 +921,8 @@ def test_gv_lg_4_timeline_governance_carries_explained_triple(tmp_path: Path) ->
     assert without_feed["enrichment_reasons"]["governance"]["reason_class"] == "disabled"
 
 
-def test_gv_rq_1_requirements_is_reserved_but_honest_on_every_tool(tmp_path: Path) -> None:
-    """GV-RQ-1: the reserved requirements dimension carries a stable disabled
+def test_gv_hon_req_requirements_is_reserved_but_honest_on_every_tool(tmp_path: Path) -> None:
+    """GV-HON-REQ: the reserved requirements dimension carries a stable disabled
     triple (reserved, not yet wired) on every tool — scalar stays unavailable."""
 
     repo = _git_repo(tmp_path)
@@ -948,32 +948,32 @@ def test_gv_rq_1_requirements_is_reserved_but_honest_on_every_tool(tmp_path: Pat
 
 - [ ] Run the new vectors and watch them pass (the implementation already landed in Tasks 2-5; these LOCK it):
 ```bash
-cd "$(git rev-parse --show-toplevel)" && python -m pytest tests/contracts/test_golden_vectors.py -k "gv_lw_6 or gv_lg_4 or gv_rq_1" -q
+cd "$(git rev-parse --show-toplevel)" && uv run pytest tests/contracts/test_golden_vectors.py -k "gv_hon_sei or gv_hon_gov or gv_hon_req" -q
 ```
 Expected: `3 passed`. (If any fails, the implementation in Tasks 2-5 is incomplete — fix the implementation, NOT the vector.)
 
-- [ ] Add the portable fixture entries. In `tests/fixtures/contracts/warpline/golden-vectors.json`, add three entries to the `vectors` array (after `GV-LG-3`, before the closing `]`):
+- [ ] Add the portable fixture entries. In `tests/fixtures/contracts/warpline/golden-vectors.json`, add three entries to the `vectors` array (after `GV-LW-6`, before the closing `]`):
 ```json
-    {"id": "GV-LW-6", "seam": "loomweave", "tool": "warpline_change_list / warpline_edge_snapshot_capture",
+    {"id": "GV-HON-SEI", "seam": "loomweave", "tool": "warpline_change_list / warpline_edge_snapshot_capture",
      "assert": "sei absence is explained: change_list no-SEI -> enrichment.sei absent + enrichment_reasons.sei reason_class unresolved_input; capture loomweave-down -> sei unavailable + reason_class unreachable"},
-    {"id": "GV-LG-4", "seam": "legis", "tool": "warpline_entity_timeline_get",
+    {"id": "GV-HON-GOV", "seam": "legis", "tool": "warpline_entity_timeline_get",
      "assert": "timeline governance is explained: rename feed -> governance present + enrichment_reasons.governance clean; no feed -> governance unavailable + reason_class disabled"},
-    {"id": "GV-RQ-1", "seam": "all", "tool": "all six",
+    {"id": "GV-HON-REQ", "seam": "all", "tool": "all six",
      "assert": "reserved requirements dimension carries a stable disabled triple (reserved, not yet wired) on every tool; scalar stays unavailable"}
 ```
-(Add a comma after the existing `GV-LG-3` object's closing `}` so the JSON stays valid.)
+(Add a comma after the existing `GV-LW-6` object's closing `}` so the JSON stays valid.)
 
-- [ ] Validate the JSON fixture parses and now lists 17 vectors:
+- [ ] Validate the JSON fixture parses and now lists 18 vectors:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && python -c "import json; v=json.load(open('tests/fixtures/contracts/warpline/golden-vectors.json'))['vectors']; print(len(v)); assert [x['id'] for x in v][-3:]==['GV-LW-6','GV-LG-4','GV-RQ-1']; print('ok')"
+cd "$(git rev-parse --show-toplevel)" && python -c "import json; v=json.load(open('tests/fixtures/contracts/warpline/golden-vectors.json'))['vectors']; print(len(v)); assert [x['id'] for x in v][-3:]==['GV-HON-SEI','GV-HON-GOV','GV-HON-REQ']; print('ok')"
 ```
-Expected: `17` then `ok`.
+Expected: `18` then `ok`.
 
-- [ ] Run the FULL golden-vector suite to prove nothing in the frozen 14 regressed:
+- [ ] Run the FULL golden-vector suite to prove nothing in the frozen 15 regressed:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && python -m pytest tests/contracts/test_golden_vectors.py -q
+cd "$(git rev-parse --show-toplevel)" && uv run pytest tests/contracts/test_golden_vectors.py -q
 ```
-Expected: `17 passed`.
+Expected: `18 passed`.
 
 - [ ] Lint the test file:
 ```bash
@@ -983,9 +983,9 @@ Expected: `All checks passed!`.
 
 - [ ] Commit:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && git add tests/contracts/test_golden_vectors.py tests/fixtures/contracts/warpline/golden-vectors.json && git commit -m "test(contracts): lock honesty-completeness as golden vectors GV-LW-6/LG-4/RQ-1
+cd "$(git rev-parse --show-toplevel)" && git add tests/contracts/test_golden_vectors.py tests/fixtures/contracts/warpline/golden-vectors.json && git commit -m "test(contracts): lock honesty-completeness as golden vectors GV-HON-SEI/HON-GOV/HON-REQ
 
-Extend the frozen 14 to 17: sei absence carries an explained triple
+Extend the frozen 15 to 18: sei absence carries an explained triple
 (unresolved_input vs unreachable), timeline governance carries a triple
 (clean vs disabled), and the reserved requirements dimension carries a
 stable disabled triple on all six tools. Portable JSON fixture updated in
@@ -1010,13 +1010,13 @@ Prove the whole change set is honest-complete and breaks nothing the gates prote
 ```bash
 cd "$(git rev-parse --show-toplevel)" && python -m pytest -q
 ```
-Expected: all pass (0 failed). In particular `tests/test_enrichment_merge.py` (the R6 scalar tests at lines 94, 112) stays green because the `risk`/`governance` SCALARS on `reverify_worklist` are unchanged — this plan only adds the `requirements` triple and the read/timeline/capture triples.
+Expected: all pass (0 failed). In particular `tests/test_enrichment_merge.py` (the R6 scalar tests at lines 94, 112) stays green because the `risk`/`governance` SCALARS on `reverify_worklist` are unchanged — this plan only adds the `requirements` triple and the read/timeline/capture triples. The frozen 15 golden vectors (GV-LW-1 through GV-LW-6) must not regress; the 3 new honesty vectors (GV-HON-SEI, GV-HON-GOV, GV-HON-REQ) bring the total to 18.
 
-- [ ] Run ruff and pyright across the touched modules:
+- [ ] Run ruff and mypy across the touched modules:
 ```bash
-cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline tests && pyright src/warpline
+cd "$(git rev-parse --show-toplevel)" && ruff check src/warpline tests && uv run mypy src/warpline
 ```
-Expected: ruff `All checks passed!`; pyright `0 errors, 0 warnings`.
+Expected: ruff `All checks passed!`; mypy `0 errors`.
 
 - [ ] Run the two warpline self-gates the global constraints name:
 ```bash
@@ -1060,5 +1060,5 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - `entity_timeline` `governance` carries a `clean`/`disabled` triple (Task 5).
 - `requirements` is reserved-but-honest: scalar `unavailable` + stable `disabled` triple on every tool (Task 2), key NOT removed.
 - No new `reason_class` was added; the canonical-11 guard at `tests/test_list_ergonomics.py:457` is untouched.
-- The frozen 14 golden vectors still pass; 3 new vectors (GV-LW-6, GV-LG-4, GV-RQ-1) lock the new invariants in both the executable suite and the portable JSON fixture (Task 6).
-- ruff, pyright, full pytest, `warpline dogfood-eval`, `warpline mcp-smoke`, and the member-diff guard are green (Task 7); `meta.local_only`/`peer_side_effects` invariant intact.
+- The frozen 15 golden vectors still pass; 3 new vectors (GV-HON-SEI, GV-HON-GOV, GV-HON-REQ) lock the new invariants in both the executable suite and the portable JSON fixture (Task 6), bringing the total to 18.
+- ruff, mypy, full pytest, `warpline dogfood-eval`, `warpline mcp-smoke`, and the member-diff guard are green (Task 7); `meta.local_only`/`peer_side_effects` invariant intact.
