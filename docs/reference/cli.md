@@ -1,6 +1,6 @@
 # CLI reference
 
-Complete reference for the `warpline` command-line interface, version `1.0.0`.
+Complete reference for the `warpline` command-line interface, version `1.1.1`.
 warpline is an `argparse` application; the surface is the set of subcommands below.
 Every command takes `--repo` (default `.`) unless noted, and the data-returning
 commands take `--json`.
@@ -16,7 +16,7 @@ warpline --version
 ```
 
 ```text
-warpline 1.0.0
+warpline 1.1.1
 ```
 
 ## Two executables

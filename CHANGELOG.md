@@ -8,6 +8,32 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [1.1.1] - 2026-06-22
+
+Patch release for snapshot-capture correctness and release hygiene. Frozen
+`warpline.<contract>.v1` MCP contracts remain unchanged.
+
+### Changed
+
+- The member-diff release guard is now opt-in, so Warpline-owned gates do not
+  fail because sibling repositories have unrelated dirty work.
+- Full edge-snapshot capture now reuses one Loomweave stdio MCP session per
+  client and batches snapshot-edge writes in a single insert transaction.
+
+### Fixed
+
+- `capture_snapshot` resolves symbolic commit refs like `HEAD` before storing the
+  snapshot commit, so later staleness checks compare against a real SHA.
+- Snapshot capture no longer publishes `FULL` until edge capture has finished,
+  preventing readers from observing a complete snapshot with partial edges.
+- `changed_only` snapshot capture now resolves `path`, `qualname`, and `sei`
+  scopes to stored entity keys and reports unresolved scoped refs as `DELTA`
+  failures instead of a false `FULL`.
+- The managed post-commit hook no longer runs synchronous full snapshot capture;
+  `warpline doctor --fix` detects and repairs older managed hooks that still do.
+- Public docs and evidence no longer expose developer-local absolute paths, and
+  `FILIGREE_API_URL` is documented for live Filigree work-state enrichment.
+
 ## [1.1.0] - 2026-06-17
 
 Capability-ladder release (Rung 0/1/2). All frozen `warpline.<contract>.v1` MCP

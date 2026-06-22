@@ -1,6 +1,6 @@
 # warpline — temporal change-impact authority
 
-Version 1.1.0 · Weft federation member (5th) · local-first · enrich-only
+Version 1.1.1 · Weft federation member (5th) · local-first · enrich-only
 
 warpline is the Weft federation's **temporal / change-impact authority**. It owns
 the one thing no other member stores — **per-entity change history across runs,
@@ -50,7 +50,7 @@ Install as a [uv](https://docs.astral.sh/uv/) tool (recommended — provides the
 
 ```bash
 uv tool install warpline
-warpline --version        # warpline 1.1.0
+warpline --version        # warpline 1.1.1
 ```
 
 Or with pip (warpline is a zero-dependency package):
@@ -133,7 +133,7 @@ Every outbound tool returns the frozen success envelope:
   "next_actions": {},
   "enrichment": {"sei": "...", "edges": "...", "work": "...",
                   "risk": "...", "governance": "...", "requirements": "..."},
-  "meta": {"producer": {"tool": "warpline", "version": "1.1.0"},
+  "meta": {"producer": {"tool": "warpline", "version": "1.1.1"},
             "local_only": true, "peer_side_effects": []}
 }
 ```

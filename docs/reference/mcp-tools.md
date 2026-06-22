@@ -56,7 +56,7 @@ and the relevant `enrichment` keys differ between tools.
   "enrichment": {"sei": "...", "edges": "...", "work": "...",
                  "risk": "...", "governance": "...", "requirements": "..."},
   "meta": {
-    "producer": {"tool": "warpline", "version": "1.0.0"},
+    "producer": {"tool": "warpline", "version": "1.1.1"},
     "local_only": true,
     "peer_side_effects": []
   }

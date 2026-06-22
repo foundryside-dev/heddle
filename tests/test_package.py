@@ -8,7 +8,7 @@ import warpline
 
 
 def test_package_has_version() -> None:
-    assert warpline.__version__ == "1.1.0"
+    assert warpline.__version__ == "1.1.1"
 
 
 def test_cli_version() -> None:
@@ -19,4 +19,4 @@ def test_cli_version() -> None:
         text=True,
         stdout=subprocess.PIPE,
     )
-    assert completed.stdout.strip() == "warpline 1.1.0"
+    assert completed.stdout.strip() == "warpline 1.1.1"
