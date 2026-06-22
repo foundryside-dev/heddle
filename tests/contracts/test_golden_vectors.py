@@ -90,6 +90,13 @@ class _TruncatedNeighborhoodClient:
         }
 
 
+class _ExplodingNeighborhoodClient:
+    """Hard mid-capture kill (BaseException, not Exception) for GV-LW-6."""
+
+    def neighborhood(self, entity: str) -> dict[str, Any]:
+        raise KeyboardInterrupt("loomweave killed mid-capture")
+
+
 class _FixtureWorkClient:
     """A controlled filigree implementing the ADR-029 reverse-lookup + issue_get
     seam with real-shaped payloads."""
@@ -200,6 +207,46 @@ def test_gv_lw_5_sei_resolution_present_vs_unavailable(tmp_path: Path) -> None:
     # loomweave unreachable on capture → sei unavailable, never an implied clean state
     unavailable = commands.capture_snapshot(repo, commit="c1", loomweave_command="/no/such")
     assert unavailable["enrichment"]["sei"] == "unavailable"
+
+
+def test_gv_lw_6_capture_failure_preserves_prior_snapshot(tmp_path: Path) -> None:
+    """GV-LW-6: a hard mid-capture failure leaves the PRIOR snapshot intact and
+    visible (fail-closed), never a degraded/empty row. Locks WS1's atomic-capture
+    invariant: no edge_snapshots row visible until all its edges are committed."""
+    repo = _git_repo(tmp_path)
+    with _store(repo) as store:
+        repo_id = store.ensure_repo(repo)
+        _seed_entity(store, repo_id, "python:function:pkg/mod.py::a", None)
+        _seed_entity(store, repo_id, "python:function:pkg/mod.py::b", None)
+        full = capture_edge_snapshot(
+            store, repo, commit_sha="c1", client=_FullNeighborhoodClient(), source_version="v1"
+        )
+        prior = store.latest_snapshot(repo)
+        assert prior is not None
+        prior_id = int(prior["id"])
+        # The captured edge is unambiguously (pkg.mod.a -> pkg.mod.b): both seeded
+        # locators' aliases match the neighborhood client's source/callee.
+        prior_edges = store.snapshot_edges(prior_id)
+    assert full["completeness"] == "FULL"
+    assert len(prior_edges) > 0
+
+    with _store(repo) as store:
+        try:
+            capture_edge_snapshot(
+                store, repo, commit_sha="c1", client=_ExplodingNeighborhoodClient(),
+                source_version="v2",
+            )
+        except KeyboardInterrupt:
+            pass
+
+    with _store(repo) as store:
+        after = store.latest_snapshot(repo)
+        assert after is not None
+        after_edges = store.snapshot_edges(int(after["id"]))
+    assert after["id"] == prior_id
+    assert after["completeness"] == "FULL"
+    assert after["source_version"] == "v1"
+    assert len(after_edges) == len(prior_edges)
 
 
 # ============================================================ SEAM 2 — filigree

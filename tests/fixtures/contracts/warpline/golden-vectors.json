@@ -15,6 +15,12 @@
      "assert": "truncated neighborhood (callers:true) -> DELTA, never FULL"},
     {"id": "GV-LW-5", "seam": "loomweave", "tool": "warpline_change_list / warpline_edge_snapshot_capture",
      "assert": "locator resolves -> sei stored, enrichment.sei present; loomweave absent -> sei null, enrichment.sei unavailable"},
+    {
+      "id": "GV-LW-6",
+      "seam": "loomweave",
+      "tool": "warpline_edge_snapshot_capture",
+      "assert": "hard mid-capture failure (loomweave killed) leaves the prior snapshot intact and visible (fail-closed); no edge_snapshots row is visible until all its edges are committed; never a degraded DELTA/0-edge row"
+    },
     {"id": "GV-FI-1", "seam": "filigree", "tool": "warpline_reverify_worklist_get",
      "assert": "filigree present, linked P1 issue -> item priority P1, enrichment.work[0].issue_status populated, next_actions.filigree is a candidate (warpline filed nothing)"},
     {"id": "GV-FI-2", "seam": "filigree", "tool": "warpline_reverify_worklist_get",
