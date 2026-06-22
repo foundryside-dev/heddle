@@ -107,18 +107,18 @@ class BatchOnlyStore:
             {"id": 3, "locator": "python:function:c", "sei": None},
         ]
 
-    def create_edge_snapshot(
+    def capture_snapshot_atomic(
         self,
+        *,
         repo_id: str,
         commit_sha: str,
         source: str,
         source_version: str,
         completeness: str,
+        edges: list[tuple[int, int, str, str]],
     ) -> int:
+        self.batches.append(list(edges))
         return 10
-
-    def clear_snapshot_edges(self, snapshot_id: int) -> None:
-        return None
 
     def ensure_entity_key(
         self,
@@ -138,14 +138,12 @@ class BatchOnlyStore:
         edge_kind: str,
         confidence: str,
     ) -> None:
-        raise AssertionError("capture should batch snapshot edge writes")
+        raise AssertionError("capture should batch via capture_snapshot_atomic")
 
-    def append_snapshot_edges(
-        self,
-        snapshot_id: int,
-        edges: list[tuple[int, int, str, str]],
-    ) -> None:
-        self.batches.append(list(edges))
+    def clear_snapshot_edges(self, snapshot_id: int) -> None:
+        raise AssertionError(
+            "SKIPPED path (client is None) must not be exercised through BatchOnlyStore"
+        )
 
 
 def test_skipped_snapshot_is_queryable(tmp_path: Path) -> None:
