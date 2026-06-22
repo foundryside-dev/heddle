@@ -9,7 +9,6 @@ def hook_body(executable: str) -> str:
 # Managed by Warpline. Fail-soft by design: Warpline must never block commits.
 {executable} ingest-commit HEAD >/dev/null 2>&1 || true
 {executable} reresolve-sei --limit 25 >/dev/null 2>&1 || true
-{executable} capture-snapshot --commit HEAD >/dev/null 2>&1 || true
 # END WARPLINE MANAGED BLOCK
 exit 0
 """

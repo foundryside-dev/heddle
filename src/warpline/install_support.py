@@ -305,11 +305,11 @@ def apply_gitignore(repo: Path) -> str:
 
 
 # --- git post-commit hook --------------------------------------------------------
-# Sentinel proving an installed hook carries the current managed body. Rung 1d
-# added the reresolve-sei + capture-snapshot lines (install.py:hook_body); an
-# older installed hook lacks them, so `doctor` flags it stale and `--fix`
-# reinstalls (R5 — editing hook_body alone never rewrites installed hooks).
+# Sentinel proving an installed hook carries the current managed body. The hook
+# path is intentionally bounded: ingest + a small SEI reresolve sweep. Full edge
+# snapshot capture is deferred to reads or explicit capture commands.
 HOOK_CURRENCY_SENTINEL = "reresolve-sei"
+LEGACY_SYNC_CAPTURE_SENTINEL = "capture-snapshot"
 
 
 def check_git_hook(repo: Path) -> CheckResult:
@@ -325,7 +325,14 @@ def check_git_hook(repo: Path) -> CheckResult:
         return _result(
             "git post-commit hook",
             False,
-            "post-commit hook out of date (missing reresolve/capture lines); run "
+            "post-commit hook out of date (missing bounded reresolve line); run "
+            "`warpline install --hooks` or `warpline doctor --fix`",
+        )
+    if LEGACY_SYNC_CAPTURE_SENTINEL in body:
+        return _result(
+            "git post-commit hook",
+            False,
+            "post-commit hook out of date (runs synchronous capture-snapshot); run "
             "`warpline install --hooks` or `warpline doctor --fix`",
         )
     return _result("git post-commit hook", True, "ingest hook installed (current)")

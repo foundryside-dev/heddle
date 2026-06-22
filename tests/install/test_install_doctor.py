@@ -89,7 +89,7 @@ def test_doctor_reports_missing_then_fix_repairs(tmp_path: Path) -> None:
 
 
 def test_doctor_flags_stale_hook_then_fix_reinstalls(tmp_path: Path) -> None:
-    """Rung 1d: an installed-but-old hook (no reresolve/capture lines) is flagged
+    """An installed-but-old hook (no bounded reresolve line) is flagged
     stale by doctor, and `--fix` regenerates it (R5 — editing hook_body alone
     never rewrites already-installed hooks)."""
 
@@ -117,7 +117,36 @@ def test_doctor_flags_stale_hook_then_fix_reinstalls(tmp_path: Path) -> None:
     assert any(name == "git post-commit hook" for name, _ in fixed.fixed)
     body = hook.read_text(encoding="utf-8")
     assert "reresolve-sei" in body
-    assert "capture-snapshot" in body
+    assert "capture-snapshot" not in body
+
+
+def test_doctor_flags_managed_hook_with_synchronous_capture_then_fix_reinstalls(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path)
+    install_support.run_install(repo)
+    hook = repo / ".git" / "hooks" / "post-commit"
+    hook.write_text(
+        "#!/bin/sh\n"
+        "# BEGIN WARPLINE MANAGED BLOCK\n"
+        "warpline ingest-commit HEAD >/dev/null 2>&1 || true\n"
+        "warpline reresolve-sei --limit 25 >/dev/null 2>&1 || true\n"
+        "warpline capture-snapshot --commit HEAD >/dev/null 2>&1 || true\n"
+        "# END WARPLINE MANAGED BLOCK\nexit 0\n",
+        encoding="utf-8",
+    )
+
+    pre = install_support.run_doctor(repo)
+    assert not pre.ok
+    stale = next(r for r in pre.results if r.name == "git post-commit hook")
+    assert stale.ok is False
+    assert "out of date" in stale.detail
+
+    fixed = install_support.run_doctor(repo, fix=True)
+    assert fixed.ok
+    body = hook.read_text(encoding="utf-8")
+    assert "reresolve-sei" in body
+    assert "capture-snapshot" not in body
 
 
 def test_doctor_passes_for_current_hook(tmp_path: Path) -> None:
