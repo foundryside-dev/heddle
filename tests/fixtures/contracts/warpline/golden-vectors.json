@@ -3,7 +3,12 @@
   "producer": "warpline",
   "oracle": "GS-7 four-member conformance oracle (warpline is the 5th producer)",
   "frozen_at": "2026-06-13",
-  "executable": "tests/contracts/test_golden_vectors.py",
+  "executable": {
+    "kind": "pytest-module",
+    "module": "tests.contracts.test_golden_vectors",
+    "import_requires": "warpline",
+    "note": "These vectors are a Python executable, not a data-driven replay. The hub must run this pytest module with the warpline package importable on sys.path; the JSON below is the vector index, the assertions live in the module. Resolve the module relative to wherever this fixture tree is mounted."
+  },
   "vectors": [
     {"id": "GV-LW-1", "seam": "loomweave", "tool": "warpline_change_list",
      "assert": "2-entity change -> items len 2, each carries locator+sei, changed_refs SEI-keyed, next_actions names warpline_reverify_worklist_get"},
