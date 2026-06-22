@@ -14,17 +14,16 @@ class NeighborhoodClient(Protocol):
 
 
 def _resolve_commit(repo: Path, commit: str | None) -> str:
-    if commit is not None:
-        return commit
+    rev = commit if commit is not None else "HEAD"
     proc = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        ["git", "rev-parse", "--verify", f"{rev}^{{commit}}"],
         cwd=repo,
         check=False,
         text=True,
         capture_output=True,
     )
     if proc.returncode != 0:
-        return "UNKNOWN"
+        return commit if commit is not None else "UNKNOWN"
     return proc.stdout.strip()
 
 

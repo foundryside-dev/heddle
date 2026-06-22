@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from conftest import commit as _commit
+from conftest import init_repo as _init_repo
+
+from warpline.propagation import blast_radius
 from warpline.snapshot import capture_edge_snapshot, record_skipped_snapshot
 from warpline.store import WarplineStore
 
@@ -96,6 +100,39 @@ def test_capture_edge_snapshot_records_loomweave_edges(tmp_path: Path) -> None:
             "confidence": "resolved",
         }
     ]
+
+
+def test_capture_edge_snapshot_resolves_symbolic_commit_before_storing(
+    tmp_path: Path,
+) -> None:
+    repo = _init_repo(tmp_path)
+    first = _commit(repo, "a.py", "a = 1\n")
+    client = FakeNeighborhoodClient()
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
+        repo_id = store.ensure_repo(repo)
+        a = store.ensure_entity_key(
+            repo_id, locator="python:function:a", sei=None, commit_sha=first
+        )
+        result = capture_edge_snapshot(
+            store,
+            repo,
+            commit_sha="HEAD",
+            client=client,
+            source_version="test-client",
+        )
+        snapshot = store.latest_snapshot(repo)
+
+    assert result["commit_sha"] == first
+    assert snapshot is not None
+    assert snapshot["commit_sha"] == first
+
+    _commit(repo, "a.py", "a = 2\n")
+
+    with WarplineStore.open(tmp_path / "warpline.db") as store:
+        stale = blast_radius(store, repo, [a], depth=2)
+
+    assert stale["staleness"]["snapshot_commit"] == first
+    assert stale["staleness"]["commits_behind"] == 1
 
 
 def test_capture_edge_snapshot_maps_loomweave_ids_back_to_warpline_keys(tmp_path: Path) -> None:
