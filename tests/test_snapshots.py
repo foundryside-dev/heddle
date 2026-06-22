@@ -79,6 +79,61 @@ class LoomweaveIdNeighborhoodClient:
         }
 
 
+class BatchOnlyStore:
+    def __init__(self) -> None:
+        self.batches: list[list[tuple[int, int, str, str]]] = []
+
+    def ensure_repo(self, repo: Path) -> str:
+        return "repo-id"
+
+    def list_entity_keys(self, repo: Path) -> list[dict[str, object]]:
+        return [
+            {"id": 1, "locator": "python:function:a", "sei": None},
+            {"id": 2, "locator": "python:function:b", "sei": None},
+            {"id": 3, "locator": "python:function:c", "sei": None},
+        ]
+
+    def create_edge_snapshot(
+        self,
+        repo_id: str,
+        commit_sha: str,
+        source: str,
+        source_version: str,
+        completeness: str,
+    ) -> int:
+        return 10
+
+    def clear_snapshot_edges(self, snapshot_id: int) -> None:
+        return None
+
+    def ensure_entity_key(
+        self,
+        repo_id: str,
+        locator: str,
+        sei: str | None,
+        commit_sha: str,
+    ) -> int:
+        raise AssertionError(f"unexpected missing key for {locator}")
+
+    def append_snapshot_edge(
+        self,
+        snapshot_id: int,
+        *,
+        source_entity_key_id: int,
+        target_entity_key_id: int,
+        edge_kind: str,
+        confidence: str,
+    ) -> None:
+        raise AssertionError("capture should batch snapshot edge writes")
+
+    def append_snapshot_edges(
+        self,
+        snapshot_id: int,
+        edges: list[tuple[int, int, str, str]],
+    ) -> None:
+        self.batches.append(list(edges))
+
+
 def test_skipped_snapshot_is_queryable(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -260,6 +315,22 @@ def test_capture_edge_snapshot_clears_edges_on_recapture(tmp_path: Path) -> None
     assert snapshot is not None
     assert snapshot["completeness"] == "SKIPPED"
     assert snapshot["source_version"] == "no_index"
+
+
+def test_capture_edge_snapshot_batches_edge_writes(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    store = BatchOnlyStore()
+    result = capture_edge_snapshot(
+        store,  # type: ignore[arg-type]
+        repo,
+        commit_sha="c1",
+        client=FakeNeighborhoodClient(),
+        source_version="test-client",
+    )
+
+    assert result["edges"] == 1
+    assert store.batches == [[(1, 2, "calls", "resolved")]]
 
 
 def test_capture_edge_snapshot_degrades_truncated_neighborhood_to_delta(

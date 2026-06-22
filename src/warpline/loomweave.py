@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import selectors
 import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from types import TracebackType
+from typing import IO, Any, Protocol
 
 
 class ToolClient(Protocol):
@@ -71,28 +73,123 @@ class LoomweaveProbe:
 
 
 class LoomweaveMcpClient:
-    def __init__(self, repo: Path, command: str = "loomweave") -> None:
+    def __init__(self, repo: Path, command: str = "loomweave", timeout: float = 10.0) -> None:
         self.repo = repo
         self.command = command
+        self.timeout = timeout
+        self._process: subprocess.Popen[str] | None = None
+        self._next_request_id = 0
+
+    def __enter__(self) -> LoomweaveMcpClient:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        proc = self._process
+        self._process = None
+        if proc is None:
+            return
+        if proc.stdin is not None:
+            try:
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=1)
+        for stream in (proc.stdout, proc.stderr):
+            if stream is not None:
+                stream.close()
 
     def call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        request_id = self._next_request_id + 1
+        self._next_request_id = request_id
         request = {
             "jsonrpc": "2.0",
-            "id": 1,
+            "id": request_id,
             "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         }
-        proc = subprocess.run(
+        proc = self._ensure_process()
+        if proc.stdin is None:
+            raise RuntimeError("loomweave serve stdin unavailable")
+        try:
+            proc.stdin.write(json.dumps(request) + "\n")
+            proc.stdin.flush()
+            envelope = self._read_envelope(proc, request_id)
+        except (BrokenPipeError, TimeoutError) as exc:
+            self.close()
+            raise RuntimeError(str(exc)) from exc
+        return self._payload_from_envelope(envelope)
+
+    def _ensure_process(self) -> subprocess.Popen[str]:
+        if self._process is not None and self._process.poll() is None:
+            return self._process
+        self.close()
+        self._process = subprocess.Popen(
             [self.command, "serve", "--path", str(self.repo)],
-            input=json.dumps(request) + "\n",
-            check=False,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            capture_output=True,
-            timeout=10,
         )
-        if proc.returncode != 0:
-            raise RuntimeError(proc.stderr[-1000:])
-        envelope = json.loads(proc.stdout.splitlines()[-1])
+        return self._process
+
+    def _read_envelope(self, proc: subprocess.Popen[str], request_id: int) -> dict[str, Any]:
+        if proc.stdout is None:
+            raise RuntimeError("loomweave serve stdout unavailable")
+        while True:
+            line = self._readline(proc.stdout)
+            if line == "":
+                detail = self._stderr_tail(proc)
+                if detail:
+                    raise RuntimeError(detail)
+                raise RuntimeError("loomweave serve exited before returning a response")
+            try:
+                envelope = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(envelope, dict):
+                continue
+            if envelope.get("id") != request_id:
+                continue
+            return envelope
+
+    def _readline(self, stdout: IO[str]) -> str:
+        try:
+            stdout.fileno()
+        except (AttributeError, OSError, ValueError):
+            return stdout.readline()
+        selector = selectors.DefaultSelector()
+        try:
+            selector.register(stdout, selectors.EVENT_READ)
+            events = selector.select(self.timeout)
+        finally:
+            selector.close()
+        if not events:
+            raise TimeoutError("loomweave serve timed out before returning a response")
+        return stdout.readline()
+
+    def _stderr_tail(self, proc: subprocess.Popen[str]) -> str:
+        if proc.stderr is None or proc.poll() is None:
+            return ""
+        try:
+            return proc.stderr.read()[-1000:]
+        except OSError:
+            return ""
+
+    def _payload_from_envelope(self, envelope: dict[str, Any]) -> dict[str, Any]:
         if "error" in envelope:
             raise RuntimeError(str(envelope["error"]))
         text = envelope["result"]["content"][0]["text"]

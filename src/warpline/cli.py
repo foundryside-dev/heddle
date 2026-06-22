@@ -109,6 +109,12 @@ def _optional_sei_client(
     }
 
 
+def _close_tool_client(client: ToolClient | None) -> None:
+    close = getattr(client, "close", None)
+    if callable(close):
+        close()
+
+
 def _co_change_payload(
     repo: Path,
     *,
@@ -403,40 +409,47 @@ def main(argv: list[str] | None = None) -> int:
         print(commands.session_context(args.repo))
         return 0
     if args.command == "backfill":
-        sei_client, sei_resolution = _optional_sei_client(
+        backfill_sei_client, sei_resolution = _optional_sei_client(
             args.repo,
             enabled=args.resolve_sei,
             command=args.loomweave_command,
         )
-        with WarplineStore.open(default_store_path(args.repo)) as store:
-            report = backfill(store, args.repo, sei_client=sei_client)
+        try:
+            with WarplineStore.open(default_store_path(args.repo)) as store:
+                report = backfill(store, args.repo, sei_client=backfill_sei_client)
+        finally:
+            _close_tool_client(backfill_sei_client)
         if sei_resolution is not None:
             report["sei_resolution"] = sei_resolution
         print(json.dumps(report, sort_keys=True) if args.json else report)
         return 0
     if args.command == "ingest-commit":
+        ingest_sei_client: ToolClient | None = None
         try:
-            sei_client, _sei_resolution = _optional_sei_client(
+            ingest_sei_client, _sei_resolution = _optional_sei_client(
                 args.repo,
                 enabled=args.resolve_sei,
                 command=args.loomweave_command,
             )
             with WarplineStore.open(default_store_path(args.repo)) as store:
-                ingest_commit(store, args.repo, args.sha, sei_client=sei_client)
+                ingest_commit(store, args.repo, args.sha, sei_client=ingest_sei_client)
         except Exception as exc:  # fail-soft hook contract
             with WarplineStore.open(default_store_path(args.repo)) as store:
                 store.log_health(args.repo, "HOOK_INGEST_FAILED", str(exc))
+        finally:
+            _close_tool_client(ingest_sei_client)
         return 0
     if args.command == "reresolve-sei":
+        reresolve_sei_client: ToolClient | None = None
         try:
-            sei_client, sei_resolution = _optional_sei_client(
+            reresolve_sei_client, sei_resolution = _optional_sei_client(
                 args.repo,
                 enabled=args.resolve_sei,
                 command=args.loomweave_command,
             )
             with WarplineStore.open(default_store_path(args.repo)) as store:
                 report = sweep_reresolve_sei(
-                    store, args.repo, sei_client, limit=args.limit
+                    store, args.repo, reresolve_sei_client, limit=args.limit
                 )
         except Exception as exc:  # fail-soft: hook + doctor contract
             with WarplineStore.open(default_store_path(args.repo)) as store:
@@ -445,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             if sei_resolution is not None:
                 report["sei_resolution"] = sei_resolution
+        finally:
+            _close_tool_client(reresolve_sei_client)
         print(json.dumps(report, sort_keys=True) if args.json else report)
         return 0
     if args.command == "loomweave-probe":

@@ -226,6 +226,7 @@ def _run_real_member_case(root: Path, source_repo: Path) -> dict[str, Any]:
     case_id = "real-lacuna-loomweave"
     repo = root / "real_member" / source_repo.name
     tool_calls = 0
+    sei_client: LoomweaveMcpClient | None = None
     try:
         _prepare_real_member_repo(source_repo, repo)
         # Full-history backfill stays fast (no per-locator loomweave spawn); HX1
@@ -329,6 +330,9 @@ def _run_real_member_case(root: Path, source_repo: Path) -> dict[str, Any]:
             "manual_escape_required": True,
             "enrichment_state": {"sei": "unknown", "edges": "unknown", "completeness": "FAILED"},
         }
+    finally:
+        if sei_client is not None:
+            sei_client.close()
 
 
 def _missing_real_member_case(real_member_repo: Path | None) -> dict[str, Any]:

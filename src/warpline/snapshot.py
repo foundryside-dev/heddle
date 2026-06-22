@@ -101,6 +101,7 @@ def capture_edge_snapshot(
     store.clear_snapshot_edges(snapshot_id)
 
     edge_count = 0
+    snapshot_edges: list[tuple[int, int, str, str]] = []
     failures: list[dict[str, str]] = []
     for locator, query_entity in query_entities:
         try:
@@ -116,14 +117,9 @@ def capture_edge_snapshot(
             target_id = _entity_key_id_for_locator(
                 store, repo_id, entity_id_to_key_id, target, resolved_commit
             )
-            store.append_snapshot_edge(
-                snapshot_id,
-                source_entity_key_id=source_id,
-                target_entity_key_id=target_id,
-                edge_kind=edge_kind,
-                confidence="resolved",
-            )
+            snapshot_edges.append((source_id, target_id, edge_kind, "resolved"))
             edge_count += 1
+    store.append_snapshot_edges(snapshot_id, snapshot_edges)
 
     # A capped capture is structurally partial: it is missing entities it knows
     # exist. Treat that exactly like a per-entity failure — DELTA, not FULL.

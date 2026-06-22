@@ -4,7 +4,7 @@ import hashlib
 import logging
 import os
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from types import TracebackType
 from typing import NamedTuple
@@ -1437,13 +1437,29 @@ class WarplineStore:
         edge_kind: str,
         confidence: str,
     ) -> None:
-        self.conn.execute(
+        self.append_snapshot_edges(
+            snapshot_id,
+            [(source_entity_key_id, target_entity_key_id, edge_kind, confidence)],
+        )
+
+    def append_snapshot_edges(
+        self,
+        snapshot_id: int,
+        edges: Iterable[tuple[int, int, str, str]],
+    ) -> None:
+        rows = [
+            (snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind, confidence)
+            for source_entity_key_id, target_entity_key_id, edge_kind, confidence in edges
+        ]
+        if not rows:
+            return
+        self.conn.executemany(
             """
             INSERT OR IGNORE INTO snapshot_edges(
               snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind, confidence
             ) VALUES (?, ?, ?, ?, ?)
             """,
-            (snapshot_id, source_entity_key_id, target_entity_key_id, edge_kind, confidence),
+            rows,
         )
         self.conn.commit()
 

@@ -62,6 +62,12 @@ def session_context(repo: Path) -> str:
     return f"warpline: {len(events)} change events tracked; {snap}"
 
 
+def _close_if_supported(client: object | None) -> None:
+    close = getattr(client, "close", None)
+    if callable(close):
+        close()
+
+
 def _page(limit: int) -> dict[str, Any]:
     return {"limit": limit, "next_cursor": None, "has_more": False}
 
@@ -506,7 +512,6 @@ def _lazy_capture_if_missing(
             # attempt so the next read inside the cooldown skips the probe cost.
             _record_lazy_capture_attempt(store)
             return
-        client = LoomweaveMcpClient(repo=repo, command=command)
         source_version = str(probe.get("version") or "unknown")
         # Scope the capture to the changed seed's locators when known; an empty
         # scope means "no resolved seed", so capture the full graph (FULL) so a
@@ -515,13 +520,17 @@ def _lazy_capture_if_missing(
         scope_locators = {
             str(row["locator"]) for row in rows.values() if isinstance(row.get("locator"), str)
         }
-        capture_edge_snapshot(
-            store,
-            repo,
-            client=client,
-            source_version=source_version,
-            scope_locators=scope_locators or None,
-        )
+        client = LoomweaveMcpClient(repo=repo, command=command)
+        try:
+            capture_edge_snapshot(
+                store,
+                repo,
+                client=client,
+                source_version=source_version,
+                scope_locators=scope_locators or None,
+            )
+        finally:
+            _close_if_supported(client)
         # A usable snapshot now exists; clear any stale throttle marker so the
         # store's state is consistent (the snapshot itself short-circuits future
         # reads).
@@ -894,7 +903,7 @@ def capture_snapshot(
     probe = LoomweaveProbe(repo=repo, command=command).probe()
     status = probe.get("status")
     source_version = str(probe.get("version") or probe.get("reason") or "unknown")
-    client = LoomweaveMcpClient(repo=repo, command=command) if status == "available" else None
+    client_available = status == "available"
     scope_locators = (
         {ref["value"] for ref in refs if ref["kind"] in {"locator", "qualname", "path"}}
         if mode == "changed_only"
@@ -930,7 +939,7 @@ def capture_snapshot(
                 f"after if_stale_after={stale_after}; recapture skipped"
             )
         elif dry_run:
-            completeness = "FULL" if client is not None else "SKIPPED"
+            completeness = "FULL" if client_available else "SKIPPED"
             data = {
                 "snapshot_id": None,
                 "commit_sha": commit,
@@ -944,15 +953,19 @@ def capture_snapshot(
                 "idempotency_key": idem_key,
             }
         else:
-            result = capture_edge_snapshot(
-                store,
-                repo,
-                commit_sha=commit,
-                client=client,
-                source_version=source_version,
-                scope_locators=scope_locators,
-                max_entities=cap,
-            )
+            client = LoomweaveMcpClient(repo=repo, command=command) if client_available else None
+            try:
+                result = capture_edge_snapshot(
+                    store,
+                    repo,
+                    commit_sha=commit,
+                    client=client,
+                    source_version=source_version,
+                    scope_locators=scope_locators,
+                    max_entities=cap,
+                )
+            finally:
+                _close_if_supported(client)
             result["idempotency"] = "already_current" if had_snapshot else "created"
             result.pop("query", None)
             result.pop("enrichment", None)
@@ -976,7 +989,7 @@ def capture_snapshot(
         edges_state = EDGES_FOR_COMPLETENESS.get(str(data["completeness"]), "absent")
         # capture touches the SEI authority (loomweave). When it is unreachable,
         # the SEI fact is unavailable (peer down) — never an implied clean state.
-        sei_state = "unavailable" if client is None else "absent"
+        sei_state = "unavailable" if not client_available else "absent"
         query = {
             "repo": str(repo),
             "tool": "warpline_edge_snapshot_capture",
