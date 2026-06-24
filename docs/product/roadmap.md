@@ -1,6 +1,6 @@
 # Roadmap - Warpline
 
-Updated: 2026-06-15 (PDR-0002 — the capability ladder)
+Updated: 2026-06-24 (PDR-0004 spine hardening accepted; PDR-0005 verification-freshness is the active bet)
 
 Sequencing, WSJF / cost-of-delay, and dated forecasts are produced by
 program-management. This file records bets as intent, not a delivery schedule.
@@ -148,25 +148,28 @@ attributed to its owning member, composed at read time, never mirrored.**
 
 ## Now (committed, in-flight)
 
-- **Post-admission seam fast-follow** — Warpline was admitted as the 5th member
-  (owner, PDR-0022, 2026-06-14); seam *contracts* are frozen, consumer
-  *implementations* are an admitted fast-follow outside the launch cutover. The
-  PDR-0023 honesty work is landing (`weft-reason` G1, list-ergonomics G2, the
-  `include_federation` hub-blessed consult).
-- **Rung 0 — `commands.py` refactor** — modularity foundation; behaviour-preserving.
+- **Rung 2 — verification-freshness** *(active bet — PDR-0005)*. A `last_verified`
+  axis sourced from warpline's own gate result, so the reverify worklist answers
+  "changed since last proven-good" with a trust-decay signal; advisory, never gates.
+  Spec ready (`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`);
+  next step is `/axiom-planning`. Sibling-sourced verification stays honest-absent.
+- **Spine hardening — accepted, shipped to `plan/spine-hardening`** *(PDR-0004)*.
+  Capture correct-by-construction (atomic, fail-closed-locked), honesty completion
+  (every dimension carries the `cause + reason_class + fix` triple), and the portable
+  5th-producer conformance + hub-handover package. *Pending owner merge to `main`
+  (+ a 1.2.0 minor) and delivery of the handover to the federation hub — escalations.*
 - **Evidence freshness** — keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Warpline evolves.
 
 ## Next (shaped, decreasing certainty)
 
-- **Rung 1 — spine completion** — self-healing SEI re-resolution and auto
-  edge-snapshot capture, so SEI-keyed joins and the headline reads stop silently
-  degrading.
-- **Rung 2 — diagnostic capabilities** — the co-change graph, verification-freshness
-  tracking, and lighting up the Wardline (risk) and Legis (governance) enrichment
-  on the reverify worklist.
-- **Federation conformance oracle inclusion** — Warpline's 14 golden vectors join
-  the GS-7 four-member oracle as a fifth producer.
+- **Rung 2 — sibling-sourced verification** — wardline-resolved / filigree-closed /
+  legis-attested as `last_verified` sources, once those sibling surfaces exist (each
+  an owner/sibling escalation; honest-absent until then).
+- **Federation conformance oracle inclusion** — warpline's 18 golden vectors join the
+  GS-7 oracle as the 5th producer. The warpline-side package is DONE (portable fixture
+  + handover doc); the remaining GS-7 wiring + glossary freeze is the owner's
+  escalation (OD-5 resolved-direction).
 
 ## Later (directional bets, no order, no dates)
 

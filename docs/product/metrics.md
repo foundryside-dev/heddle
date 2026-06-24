@@ -1,6 +1,6 @@
 # Metrics - Warpline
 
-Last read: 2026-06-13
+Last read: 2026-06-24 (checkpoint)
 
 ## North-star
 
@@ -28,6 +28,27 @@ Last read: 2026-06-13
 | Hook commit blocking | 0 nonzero hook exits in normal failure paths | `hook_ingest_exit_code` = 0 | 2026-06-13 |
 | Sibling absence crashes | 0 crashes when Loomweave is absent or enrichment is unavailable | Tests cover absent enrichment and `NO_SNAPSHOT`; malformed MCP and undecodable-file fixes added after review | 2026-06-13 |
 | Authority-boundary drift | 0 cases where Warpline owns current structure, obligations, work state, trust policy, or governance | Draft contracts and boundary tests pass | 2026-06-13 |
+
+## 2026-06-24 checkpoint readings
+
+No reversal trigger crossed; the hardening bet *strengthened* the scoreboard.
+
+- **North-star** — still passing: `dogfood-eval` reports `ready: True`, real-member
+  `parity=1 / uplift=1`, federation uplift 10/10 (2026-06-24). The honesty/staleness
+  basis is now correct-by-construction (snapshot capture is atomic and fail-closed;
+  a stale snapshot can no longer read as fresh).
+- **Reverify honesty coverage** — strengthened: every enrichment dimension now carries
+  the `cause + reason_class + fix` triple (PDR-0004), locked by golden vectors
+  `GV-HON-SEI/GOV/REQ`. Suite is 18 golden vectors, all green.
+- **Hook commit blocking (guardrail)** — a latent breach was found and fixed: the
+  Loomweave MCP client had a per-`select` timeout, not a per-request deadline, so a
+  stalled `loomweave serve` could hang the post-commit hook indefinitely (defeating
+  fail-soft). Fixed + released as **v1.1.2**; hook also gained an OS-level `timeout`
+  guard. Tracked `warpline-949bd78421` (closed).
+- **Version metadata correctness** — `__version__` was a stale hardcoded literal
+  (reported 1.1.1 on the 1.1.2 build, including every envelope's
+  `meta.producer.version`); now single-sourced from package metadata. Released
+  **v1.1.3**.
 
 ## Reading notes
 

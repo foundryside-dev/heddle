@@ -1,93 +1,64 @@
 # Current State - Warpline
 
-Checkpoint: 2026-06-13 - `main` after MCP smoke and dogfood readiness gates
+Checkpoint: 2026-06-24 — post spine-hardening (accepted) + two patch releases (v1.1.2, v1.1.3)
 
 ## The bet right now
 
-Keep Warpline product-candidate ready while preserving the owner-reserved
-federation admission boundary. Warpline must remain at least as good as existing
-tools in solo mode and better with federation member enrichment.
+**Rung 2 — verification-freshness** (PDR-0005): give warpline a `last_verified` axis,
+sourced from its own gate result, so the reverify worklist answers *"changed since
+last proven-good"* with a trust-decay signal — advisory, never gates. **Moves** the
+north-star from "reverify since HEAD~1" toward "reverify since last proven-good."
 
-## In flight
+Status: design **spec written and approved-pending-review**
+(`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`, on
+`plan/spine-hardening`). Next step is the spec review gate → `/axiom-planning` →
+build. Not yet filed as a tracker issue.
 
-- Agent-first MCP productization - status: **product-candidate ready**. The
-  dogfood evaluator now gates readiness on a real Lacuna benchmark: executed
-  `git diff --name-only` plus `rg` baseline, MCP `capture_snapshot`, MCP
-  `changed`, and MCP `reverify` with a non-empty worklist.
-- MCP-first federation polish - status: **partially implemented while awaiting
-  federation review**.
-  See
-  [`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md)
-  for the remaining P1 surface gaps: namespaced aliases, specific output
-  schemas, filters/sort/pagination, and broader recoverable error taxonomy.
-  Live `tools/list` now includes mutability/idempotency metadata, and
-  `warpline mcp-smoke` proves initialize, tool inventory, structured tool-error
-  recovery, and post-error survivability over real stdio.
-- Federation admission readiness - status: Warpline-owned contracts and consumer
-  ticket package exist as pre-admission drafts; Warpline-side federation uplift is
-  implemented and proven against actual Loomweave MCP on Lacuna. Sibling-side
-  tickets remain post-admission work.
-- Product continuity - status: `docs/product/` created; future sessions should
-  RESUME here before reinterpreting the design.
+## Branch topology (load-bearing — read before acting)
 
-## Current non-admission gaps
+- **`main`** = `v1.1.3`. Two patch releases shipped this session (owner-directed):
+  v1.1.2 (post-commit hook hang fix) and v1.1.3 (version-metadata single-sourcing).
+- **`plan/spine-hardening`** holds the **accepted spine-hardening bet** (PDR-0004,
+  22 commits, all gates green, final review = ready-to-merge) **and** the
+  verification-freshness spec. It is **behind `main`** by the two patch releases
+  (independent files; merges clean). Merge `main` into it before the hardening
+  itself releases.
 
-- Production ingest/backfill can optionally resolve SEI through Loomweave's
-  published `entity_resolve` surface; default hook ingest still avoids the
-  dependency.
-- Production snapshot capture now has CLI/MCP entrypoints, but `blast_radius` /
-  `reverify` must stay covered by dogfood as the surface evolves.
-- Federation uplift is Warpline-side ready by implementation plus draft specs;
-  sibling-side work remains deferred until owner admission.
-- MCP recovery, C-9 runtime placement, and C-13 hostile-input handling are
-  covered by tests and must stay release-gated.
+## In flight (tracker)
 
-## Open questions / blocked-on-owner
+- **Nothing active.** Tracker holds only `warpline-3deba68a62` (P4, release
+  placeholder "Future"). The snapshot-capture bug cluster and the loomweave hang
+  (`warpline-949bd78421`) are **closed**. The hardening bet and the
+  verification-freshness spec live in the workspace/plans, not the tracker.
 
-- Owner admission: Warpline is not an admitted Weft member until john explicitly
-  makes that call.
-- Glossary/wire freeze: MCP and JSON shapes remain pre-admission draft until
-  glossary clearance and conformance-oracle inclusion.
-- Owner decision: whether product-candidate readiness becomes federation
-  admission, glossary freeze, and sibling ticket dispatch.
+## Open questions / blocked-on-owner (escalations)
 
-## Last checkpoint did
+1. **Merge `plan/spine-hardening` → `main` and cut a 1.2.0 minor** for the hardening
+   bet (capture correctness + honesty completion + conformance package). Outward-facing
+   release — owner's call.
+2. **Deliver the 5th-producer handover to the federation hub** — GS-7 oracle wiring +
+   glossary freeze (OD-5 is resolved-direction; the warpline-side package is done at
+   `docs/integration/2026-06-22-warpline-5th-producer-handover.md`). Sibling/hub +
+   outward-facing — owner's call.
+3. **(deferred)** Promoting `verification` into the frozen closed envelope vocab is a
+   future glossary/contract-evolution escalation (the v1 bet keeps it as a
+   reverify-item field — see PDR-0005).
 
-- Recorded the live-review verdict as `not-ready` in the spike report and
-  product docs.
-- Hardened initial MCP/runtime defects: malformed JSON degrades instead of
-  killing the server, tools advertise output schemas, `changed` feeds
-  `reverify` ids, default state moves to `.weft/warpline/`, and undecodable Python
-  files degrade to file locators.
-- Added `capture-snapshot` / `capture_snapshot` as the production path for
-  dated Loomweave edge snapshot capture into local Warpline state.
-- Added optional Loomweave-backed SEI resolution for `backfill` and
-  `ingest-commit`, with clean degradation when Loomweave is unavailable.
-- Tightened `dogfood-eval`, producing `/tmp/warpline-dogfood-results.json`;
-  current run proves 1/1 real-member baseline parity, 1/1 real Loomweave uplift
-  with 522 captured edges and 4 reverify items, plus 10/10 seeded federation
-  smoke cases.
-- Added MCP-first wait-time polish: `tools/list` metadata for read/local-write
-  status, idempotency, touched paths, and federation dependencies; configurable
-  `dogfood-eval --real-member-repo`; and `warpline mcp-smoke` for a real stdio
-  initialize/tools/list/tool-error survivability check.
-- Refreshed README and evidence docs so the agent-facing entry point documents
-  the shipped MCP workflow, verification gates, and remaining P1 contract
-  refactor.
-- Added the federation value-add and MCP-first audit that maps pairwise value
-  against Loomweave, Filigree, Wardline, Legis, Charter, Lacuna, and a future
-  Shuttle/Codeweave-style execution member.
-- Expanded that audit with an endorsement-ready interface package: endorsed MCP
-  names, compatibility shims, success/error envelopes, entity refs, list
-  controls, resource URIs, tool contracts, and pairwise payload names.
+## What this checkpoint did
 
-## Next session, start here
+- Recorded **PDR-0004** (harden-the-spine-to-earn-admission — accepted + shipped) and
+  **PDR-0005** (Rung 2 verification-freshness as the next bet, sourced from warpline's
+  own gate).
+- Moved the roadmap: spine hardening accepted/shipped (out of Now), **verification-
+  freshness is the active Now bet**; conformance-oracle inclusion reframed as
+  owner-escalation-pending (warpline-side done).
+- Added 2026-06-24 metric readings (north-star still passing; honesty coverage
+  strengthened; the hook-hang guardrail breach found + fixed). No reversal trigger
+  crossed.
 
-Execute [`docs/plans/2026-06-13-warpline-1-0-readiness.md`](../plans/2026-06-13-warpline-1-0-readiness.md).
-Keep productization evidence fresh by running `warpline dogfood-eval` and
-`warpline mcp-smoke` before `warpline productization-gate`. For further product
-work, start with the remaining P1 MCP contract refactor in
-[`federation-value-add-and-mcp-first-audit.md`](federation-value-add-and-mcp-first-audit.md).
-If the federation side endorses that document, treat its Interface Endorsement
-Package as the agreed implementation target. Do not dispatch sibling tickets
-until owner admission is explicit.
+## Next session starts here
+
+Resume the **verification-freshness spec review** (it is at the user's review gate) →
+`/axiom-planning` to generate the implementation plan → build (same subagent-driven
+flow as the hardening bet). The two owner escalations above (merge+1.2.0, hub
+handover) are waiting whenever the owner wants to act on them.
