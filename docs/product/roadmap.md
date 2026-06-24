@@ -1,6 +1,6 @@
 # Roadmap - Warpline
 
-Updated: 2026-06-24 (PDR-0004 spine hardening accepted; PDR-0005 verification-freshness is the active bet)
+Updated: 2026-06-24 (PDR-0006 spine hardening SHIPPED in v1.2.0; PDR-0005 verification-freshness is the active bet)
 
 Sequencing, WSJF / cost-of-delay, and dated forecasts are produced by
 program-management. This file records bets as intent, not a delivery schedule.
@@ -153,13 +153,16 @@ attributed to its owning member, composed at read time, never mirrored.**
   "changed since last proven-good" with a trust-decay signal; advisory, never gates.
   Spec ready (`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`);
   next step is `/axiom-planning`. Sibling-sourced verification stays honest-absent.
-- **Spine hardening — accepted, shipped to `plan/spine-hardening`** *(PDR-0004)*.
-  Capture correct-by-construction (atomic, fail-closed-locked), honesty completion
-  (every dimension carries the `cause + reason_class + fix` triple), and the portable
-  5th-producer conformance + hub-handover package. *Pending owner merge to `main`
-  (+ a 1.2.0 minor) and delivery of the handover to the federation hub — escalations.*
 - **Evidence freshness** — keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Warpline evolves.
+
+> **Spine hardening — SHIPPED in v1.2.0** (PDR-0004 accepted; PDR-0006 accept+ship
+> after a release-grade review). Capture is correct-by-construction (atomic,
+> fail-closed-locked), honesty is complete (every dimension carries the
+> `cause + reason_class + fix` triple), and the 5th-producer conformance package
+> exists. No longer in-flight. The remaining **hub-handover delivery** is an owner
+> escalation (tracked in `current-state.md`); review follow-ups are tracked issues
+> warpline-d7d04243b2 / -fc09bdeddd / -d88e223731 / -17242c627b.
 
 ## Next (shaped, decreasing certainty)
 

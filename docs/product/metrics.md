@@ -50,6 +50,24 @@ No reversal trigger crossed; the hardening bet *strengthened* the scoreboard.
   `meta.producer.version`); now single-sourced from package metadata. Released
   **v1.1.3**.
 
+## 2026-06-24 readings — v1.2.0 ship + release-grade review
+
+The spine-hardening bet shipped to `main` as **v1.2.0** after a 14-agent
+adversarially-verified review (PDR-0006). No reversal trigger crossed.
+
+- **Release-grade review verdict: ship** — 0 confirmed blockers, 0 confirmed majors.
+  All frozen-contract invariants independently re-verified (closed six-key vocab,
+  `meta.local_only`/`peer_side_effects`, additive `enrichment_reasons`, frozen golden
+  vectors); `capture_snapshot_atomic` confirmed correct-by-construction. Integrated
+  full suite **338 passed, 1 skipped**; release gate green.
+- **Tracked quality debt (4 follow-ups, none blocking)** — warpline-d7d04243b2
+  (SKIPPED-path non-atomic, pre-existing), -fc09bdeddd (contract-fixture drift, do
+  with the hub handover), -d88e223731 (`reason()` assert→ValueError), -17242c627b
+  (atomic ROLLBACK coverage + precondition guard).
+- **Install hygiene** — warpline 1.2.0 is the single canonical uv tool; the stale
+  pre-rename `heddle` editable venv (which shadowed bare invocations at 1.0.0) was
+  retired.
+
 ## Reading notes
 
 - The north-star is deliberately agent-workflow based. Warpline wins only when an
