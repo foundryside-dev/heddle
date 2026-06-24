@@ -11,11 +11,11 @@ Do not patch sibling repos from Warpline delivery work.
 - Boundary: Loomweave owns current structure and SEI. Warpline supplies temporal history only.
 - Acceptance: Loomweave still answers current graph queries from Loomweave storage; Warpline absence disables only churn/recency enrichment.
 
-## Charter
+## Plainweave
 
-- Goal: consume Warpline reverify/affected-set facts when Charter impact analysis lands.
-- Boundary: Charter owns obligations, baselines, verification evidence, and requirement impact. Warpline supplies structural/temporal affected entities.
-- Acceptance: Charter impact reports still run from local trace links when Warpline is absent.
+- Goal: consume Warpline reverify/affected-set facts when Plainweave impact analysis lands.
+- Boundary: Plainweave owns obligations, baselines, verification evidence, and requirement impact. Warpline supplies structural/temporal affected entities.
+- Acceptance: Plainweave impact reports still run from local trace links when Warpline is absent.
 
 ## Legis
 

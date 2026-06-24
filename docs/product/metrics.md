@@ -24,7 +24,7 @@ Last read: 2026-06-24 (checkpoint)
 
 | Metric | Floor / ceiling | Current | Read on |
 |--------|-----------------|---------|---------|
-| Member repo diff violations | 0 Warpline-caused diffs in Filigree, Wardline, Legis, Loomweave, or Charter | 0 beyond recorded baselines | 2026-06-13 |
+| Member repo diff violations | 0 Warpline-caused diffs in Filigree, Wardline, Legis, Loomweave, or Plainweave | 0 beyond recorded baselines | 2026-06-13 |
 | Hook commit blocking | 0 nonzero hook exits in normal failure paths | `hook_ingest_exit_code` = 0 | 2026-06-13 |
 | Sibling absence crashes | 0 crashes when Loomweave is absent or enrichment is unavailable | Tests cover absent enrichment and `NO_SNAPSHOT`; malformed MCP and undecodable-file fixes added after review | 2026-06-13 |
 | Authority-boundary drift | 0 cases where Warpline owns current structure, obligations, work state, trust policy, or governance | Draft contracts and boundary tests pass | 2026-06-13 |

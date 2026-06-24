@@ -5,8 +5,8 @@ assembly, are a different register — they live in the `99-` gate report.)
 
 | # | Item | Disposition | Reactivation trigger |
 |---|------|-------------|----------------------|
-| D-01 | Member-side consumer wiring (loomweave `high_churn`/`recently_changed` lighting up, wardline scoped re-scan, legis gate scope, charter re-verify pull) | DEFERRED — designed at the seam level in `15-`, built only in each member's own tracker | launch cutover lands (lifts CON-TEC-02) AND spike returns go AND owner admits per §7 |
-| D-02 | Requirements-side impact analysis | DESCOPED — Charter's domain (doctrine §2) | never (re-open only via a doctrine change, which is owner-reserved) |
+| D-01 | Member-side consumer wiring (loomweave `high_churn`/`recently_changed` lighting up, wardline scoped re-scan, legis gate scope, plainweave re-verify pull) | DEFERRED — designed at the seam level in `15-`, built only in each member's own tracker | launch cutover lands (lifts CON-TEC-02) AND spike returns go AND owner admits per §7 |
+| D-02 | Requirements-side impact analysis | DESCOPED — Plainweave's domain (doctrine §2) | never (re-open only via a doctrine change, which is owner-reserved) |
 | D-03 | Change execution / rollback provenance | DESCOPED — Shuttle's sketched gap | never within Warpline |
 | D-04 | Actor identity verification ("is this actor string true?") | DESCOPED — Tabard (roadmap Later) | Tabard ships; Warpline then consumes, not implements |
 | D-05 | Cross-host / multi-machine history | DEFERRED | cross-host federation becomes real (roadmap Later) |

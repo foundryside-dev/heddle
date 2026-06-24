@@ -18,7 +18,7 @@ shape of the codebase or the federation's operational systems of record.
   load, clearer reverify prompts, and cleaner post-admission integration seams.
 - Explicitly not: hosted analytics users, generic project-management users,
   teams that want Warpline to replace Loomweave, Filigree, Wardline, Legis, or
-  Charter.
+  Plainweave.
 
 ## Positioning
 
@@ -41,7 +41,7 @@ Warpline owns temporal change-impact facts:
 Sibling authority boundaries are product doctrine, not implementation detail:
 
 - Loomweave owns current structure and SEI.
-- Charter owns obligations, baselines, verification evidence, and requirement
+- Plainweave owns obligations, baselines, verification evidence, and requirement
   impact.
 - Legis owns governance, sign-offs, CI/check context, and attestations.
 - Wardline owns trust policy, findings, baselines, waivers, judge labels, and

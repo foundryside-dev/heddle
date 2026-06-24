@@ -52,7 +52,7 @@ gate-like "all clear" into a tool that has no business issuing one.
 ## How this shapes what warpline feeds the federation
 
 warpline feeds advisory change-impact facts to governance-style surfaces (such as
-Legis or a Charter layer): *what changed* and *what is downstream-affected*. Those
+Legis or a Plainweave layer): *what changed* and *what is downstream-affected*. Those
 surfaces may have their own policy and their own gates — that is their authority.
 warpline supplies the facts; it never makes the call. The boundary is in
 [Federation](../federation.md).

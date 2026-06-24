@@ -86,7 +86,7 @@ is `present`.
 ## What warpline feeds the federation (outbound)
 
 warpline feeds **advisory change-impact facts** to governance-style surfaces (Legis,
-or a Charter layer): *what changed* and *what is downstream-affected*. Those
+or a Plainweave layer): *what changed* and *what is downstream-affected*. Those
 surfaces may run their own policy and their own gates — that is their authority.
 warpline supplies the facts and never makes the call.
 

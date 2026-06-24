@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-CONSUMERS = ["Loomweave", "Charter", "Legis", "Wardline", "Filigree"]
+CONSUMERS = ["Loomweave", "Plainweave", "Legis", "Wardline", "Filigree"]
 
 
 def test_consumer_ticket_package_exists_for_every_pairwise_story() -> None:
@@ -20,7 +20,7 @@ def test_consumer_ticket_package_keeps_authorities_separate() -> None:
         encoding="utf-8"
     )
     assert "Loomweave owns current structure" in text
-    assert "Charter owns obligations" in text
+    assert "Plainweave owns obligations" in text
     assert "Legis owns governance" in text
     assert "Wardline owns trust policy" in text
     assert "Filigree owns work state" in text

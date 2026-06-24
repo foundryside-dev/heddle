@@ -51,7 +51,7 @@ synthetic federation cases remain smoke coverage, not readiness evidence.
    the next P1 refactor.
 4. FEDERATION BOUNDARY - Warpline responses identify absent, stale, skipped, or
    no-snapshot enrichment without claiming sibling-owned current truth.
-   Reject branch: any response that treats Loomweave, Charter, Legis, Wardline,
+   Reject branch: any response that treats Loomweave, Plainweave, Legis, Wardline,
    or Filigree data as Warpline-owned truth blocks acceptance.
 5. SOLO MODE - With no sibling enrichment, Warpline still returns useful
    locator-keyed changed/timeline/reverify facts and explicit `NO_SNAPSHOT` or

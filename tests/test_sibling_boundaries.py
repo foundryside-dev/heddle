@@ -5,7 +5,7 @@ import os
 import subprocess
 from pathlib import Path
 
-FORBIDDEN_IMPORT_ROOTS = {"filigree", "wardline", "legis", "loomweave", "charter"}
+FORBIDDEN_IMPORT_ROOTS = {"filigree", "wardline", "legis", "loomweave", "plainweave"}
 
 
 def test_warpline_does_not_import_sibling_packages() -> None:

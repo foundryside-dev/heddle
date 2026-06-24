@@ -20,7 +20,7 @@ never decides whether a change is allowed.** This is deconfliction tooling, not
 security. A warpline answer is an enhancement you can act on or ignore — never a
 verdict you must clear. It **consumes** Loomweave SEI (it never mints identity) and
 **feeds** advisory change-impact facts to governance-style surfaces such as
-Legis/Charter, which run their own policy; warpline supplies the facts and never
+Legis/Plainweave, which run their own policy; warpline supplies the facts and never
 makes the call.
 
 The product front door lives at

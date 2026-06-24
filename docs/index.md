@@ -116,7 +116,7 @@ pairwise with its siblings, always enrich-only:
 - It **consumes** Loomweave SEI resolution and dated structural edges (the only
   proven, frozen inbound seam) and Filigree work-state links.
 - It **feeds** advisory change-impact facts to governance-style surfaces
-  (Legis/Charter): what changed and what is downstream-affected. It never decides
+  (Legis/Plainweave): what changed and what is downstream-affected. It never decides
   whether the change is allowed.
 - It **degrades honestly** when a sibling is absent — the answer reports
   `unavailable`, never an implied "clean" or "allowed" state.

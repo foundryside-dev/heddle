@@ -36,7 +36,7 @@ work-state, trust, requirements, or current-graph truth.
 | Work state, issues, observations, claims, lifecycle | Filigree | Read or propose links; never file, close, claim, or mutate work by default. |
 | Trust policy, findings, waivers, baselines, taint lattice | Wardline | Consume risk/finding facts as enrichment; never declare a change allowed or clean. |
 | Governance, signoff, CI/git attestations, overrides | Legis | Consume provenance and rename facts; emit advisory impact only; never govern. |
-| Requirements, traceability, verification evidence, baselines | Charter | Consume obligation context; never emit requirement satisfaction or release readiness. |
+| Requirements, traceability, verification evidence, baselines | Plainweave | Consume obligation context; never emit requirement satisfaction or release readiness. |
 | Demo corpus | Lacuna | Use as optional dogfood/showcase corpus; never as product authority. |
 | Change execution | Future Shuttle/Codeweave-style member | Do not bind until a real member exists. |
 
@@ -475,7 +475,7 @@ Output `data`:
     "filigree": "available|unavailable|unknown",
     "wardline": "available|unavailable|unknown",
     "legis": "available|unavailable|unknown",
-    "charter": "available|unavailable|unknown"
+    "plainweave": "available|unavailable|unknown"
   }
 }
 ```
@@ -506,7 +506,7 @@ enrich-only.
 | Filigree + Warpline | Entity associations, issue/work status, reconciliation feed | `warpline.reverify_worklist.v1` candidate work context and optional `next_actions.filigree` | If Filigree is absent, Warpline omits work enrichment and never auto-files work. |
 | Wardline + Warpline | Finding/risk facts, suppression state, taint/trust-boundary context | `warpline.affected_scope.v1` for scoped scan hints | If Wardline is absent, Warpline says `risk=unavailable`; it never treats absence as clean. |
 | Legis + Warpline | `git_rename_list` / rename feed, branch/commit/PR/governance context | `warpline.preflight_impact.v1` advisory affected-set facts | If Legis is absent, Warpline uses raw git history and marks governance enrichment unavailable. |
-| Charter + Warpline | Requirement links, verification freshness, baseline exposure | `warpline.obligation_impact_context.v1` advisory impacted obligations | If Charter is absent, Warpline omits requirement enrichment and never emits readiness verdicts. |
+| Plainweave + Warpline | Requirement links, verification freshness, baseline exposure | `warpline.obligation_impact_context.v1` advisory impacted obligations | If Plainweave is absent, Warpline omits requirement enrichment and never emits readiness verdicts. |
 | Lacuna + Warpline | Seeded demo changes, real-member parity benchmark, and tour cases | Dogfood/demo results only | If Lacuna drifts, dogfood must either find another real code-change worklist or fail ready; synthetic cases are smoke coverage only. |
 
 Proposed payload names:
@@ -518,7 +518,7 @@ Proposed payload names:
 - `warpline.preflight_impact.v1` - advisory impacted entities for governance
   context.
 - `warpline.obligation_impact_context.v1` - advisory impacted entities grouped by
-  Charter requirement ids.
+  Plainweave requirement ids.
 
 ### Endorsement Checklist
 
@@ -654,32 +654,32 @@ Legis-side changes after admission:
 Priority: P1 for rename/provenance consumption; P2 for deeper preflight
 composition.
 
-### Charter
+### Plainweave
 
-Charter enhances Warpline by supplying obligation context: requirements linked to
+Plainweave enhances Warpline by supplying obligation context: requirements linked to
 changed or affected entities, verification freshness, stale evidence, baseline
 drift, and accepted trace links.
 
-Warpline enhances Charter by supplying temporal affected sets that help Charter
+Warpline enhances Plainweave by supplying temporal affected sets that help Plainweave
 answer "which obligations might this change touch?" without requiring a full
 manual trace walk.
 
 Warpline-side changes:
 
-- Add optional Charter enrichment to `reverify`: requirement ids, verification
+- Add optional Plainweave enrichment to `reverify`: requirement ids, verification
   freshness, baseline exposure, and obligation severity.
 - Add filters for `requirement_id`, `verification_state`, and
   `baseline_exposure`.
-- Keep Charter facts as obligation context only; Warpline must not produce a
+- Keep Plainweave facts as obligation context only; Warpline must not produce a
   release-readiness verdict.
 
-Charter-side changes after admission:
+Plainweave-side changes after admission:
 
 - Consume Warpline affected entities in requirement dossiers and impact analysis.
 - Include Warpline completeness/staleness in obligation impact reports.
-- Preserve Charter as requirements and verification authority.
+- Preserve Plainweave as requirements and verification authority.
 
-Priority: P2 until Charter's federation adapters are live, then P1 because this
+Priority: P2 until Plainweave's federation adapters are live, then P1 because this
 is a strong pair-mode story.
 
 ### Lacuna
@@ -730,9 +730,9 @@ do not ship bindings to a non-member.
 
 Peer pattern observed:
 
-- Loomweave and Charter favor namespaced object-action verbs:
+- Loomweave and Plainweave favor namespaced object-action verbs:
   `entity_neighborhood_get`, `entity_recent_change_list`,
-  `charter_requirement_search`, `charter_baseline_list`.
+  `plainweave_requirement_search`, `plainweave_baseline_list`.
 - Legis favors domain-object verbs with action suffixes:
   `git_rename_list`, `policy_evaluate`, `signoff_status_get`,
   `identity_gap_list`.
@@ -936,14 +936,14 @@ Acceptance:
 
 ### Slice 3 - Obligation-aware impact
 
-Priority: P2 until Charter adapters are live, then P1.
+Priority: P2 until Plainweave adapters are live, then P1.
 
-Add Charter requirement and verification freshness enrichment to Warpline reverify
+Add Plainweave requirement and verification freshness enrichment to Warpline reverify
 and affected-set outputs.
 
 Acceptance:
 
-- Requirement ids and verification states appear only when Charter supplies them.
+- Requirement ids and verification states appear only when Plainweave supplies them.
 - Warpline never emits release-readiness or requirement-satisfaction verdicts.
 
 ### Slice 4 - Demo and dogfood expansion
