@@ -141,11 +141,12 @@ freeze signal — NOT a set of pending code renames.
 
 ## 5. Proven vs unproven (status)
 
-**Local conformance:** PROVEN — all 18 golden vectors green locally on branch
-harden/exec; full suite green. Contract suite: 22 passed. Full suite: 333 passed,
-3 skipped. Plans A (atomic-capture, GV-LW-6) and B (sei/governance/requirements
-triples, GV-HON-SEI / GV-HON-GOV / GV-HON-REQ) are complete and merged on this
-branch.
+**Local conformance:** PROVEN — all 18 golden vectors green, the contract suite
+green (22 passed), and the full suite green, on `main` as of the 1.2.0 release.
+(An exact pass count is intentionally omitted here — it drifts with every
+integration; run `tests/contracts/test_golden_vectors.py` for the authoritative
+result.) Plans A (atomic-capture, GV-LW-6) and B (sei/governance/requirements
+triples, GV-HON-SEI / GV-HON-GOV / GV-HON-REQ) are complete and shipped in 1.2.0.
 
 **Sibling-consumption gaps remaining post-admission** (enrich-only, non-binding —
 honest absence, never an implied clean state):
