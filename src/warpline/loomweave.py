@@ -6,6 +6,8 @@ import os
 import selectors
 import shutil
 import subprocess
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -75,10 +77,17 @@ class LoomweaveProbe:
 
 
 class LoomweaveMcpClient:
-    def __init__(self, repo: Path, command: str = "loomweave", timeout: float = 10.0) -> None:
+    def __init__(
+        self,
+        repo: Path,
+        command: str = "loomweave",
+        timeout: float = 10.0,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.repo = repo
         self.command = command
         self.timeout = timeout
+        self._monotonic = monotonic
         self._process: subprocess.Popen[bytes] | None = None
         self._next_request_id = 0
         self._stdout_buffer = b""
@@ -127,10 +136,11 @@ class LoomweaveMcpClient:
         proc = self._ensure_process()
         if proc.stdin is None:
             raise RuntimeError("loomweave serve stdin unavailable")
+        deadline = self._monotonic() + self.timeout
         try:
             proc.stdin.write((json.dumps(request) + "\n").encode("utf-8"))
             proc.stdin.flush()
-            envelope = self._read_envelope(proc, request_id)
+            envelope = self._read_envelope(proc, request_id, deadline)
         except (BrokenPipeError, TimeoutError) as exc:
             self.close()
             raise RuntimeError(str(exc)) from exc
@@ -149,11 +159,15 @@ class LoomweaveMcpClient:
         )
         return self._process
 
-    def _read_envelope(self, proc: subprocess.Popen[bytes], request_id: int) -> dict[str, Any]:
+    def _read_envelope(
+        self, proc: subprocess.Popen[bytes], request_id: int, deadline: float
+    ) -> dict[str, Any]:
         if proc.stdout is None:
             raise RuntimeError("loomweave serve stdout unavailable")
         while True:
-            line = self._readline(proc.stdout)
+            if self._monotonic() >= deadline:
+                raise TimeoutError("loomweave serve exceeded the per-request deadline")
+            line = self._readline(proc.stdout, deadline)
             if line == "":
                 detail = self._stderr_tail(proc)
                 if detail:
@@ -169,7 +183,10 @@ class LoomweaveMcpClient:
                 continue
             return envelope
 
-    def _readline(self, stdout: IO[Any]) -> str:
+    def _readline(self, stdout: IO[Any], deadline: float) -> str:
+        remaining = deadline - self._monotonic()
+        if remaining <= 0:
+            raise TimeoutError("loomweave serve exceeded the per-request deadline")
         if isinstance(stdout, io.TextIOBase):
             return stdout.readline()
         buffered = self._pop_stdout_line()
@@ -185,7 +202,7 @@ class LoomweaveMcpClient:
         selector = selectors.DefaultSelector()
         try:
             selector.register(fd, selectors.EVENT_READ)
-            events = selector.select(self.timeout)
+            events = selector.select(remaining)
         finally:
             selector.close()
         if not events:
@@ -201,7 +218,7 @@ class LoomweaveMcpClient:
         buffered = self._pop_stdout_line()
         if buffered is not None:
             return buffered
-        return self._readline(stdout)
+        return self._readline(stdout, deadline)
 
     def _pop_stdout_line(self) -> str | None:
         if b"\n" not in self._stdout_buffer:

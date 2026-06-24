@@ -7,8 +7,9 @@ def hook_body(executable: str) -> str:
     return f"""#!/bin/sh
 # BEGIN WARPLINE MANAGED BLOCK
 # Managed by Warpline. Fail-soft by design: Warpline must never block commits.
-{executable} ingest-commit HEAD >/dev/null 2>&1 || true
-{executable} reresolve-sei --limit 25 >/dev/null 2>&1 || true
+if command -v timeout >/dev/null 2>&1; then _wl_timeout="timeout 60"; else _wl_timeout=""; fi
+$_wl_timeout {executable} ingest-commit HEAD >/dev/null 2>&1 || true
+$_wl_timeout {executable} reresolve-sei --limit 25 >/dev/null 2>&1 || true
 # END WARPLINE MANAGED BLOCK
 exit 0
 """

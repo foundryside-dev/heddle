@@ -56,3 +56,27 @@ def test_ingest_commit_returns_zero_on_internal_error(
 
     monkeypatch.setattr(cli, "ingest_commit", fail)
     assert cli.main(["ingest-commit", "HEAD", "--repo", str(tmp_path)]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test C — hook body carries an OS-level timeout guard (Part 2 defense-in-depth).
+# ---------------------------------------------------------------------------
+def test_hook_body_has_os_level_timeout_guard() -> None:
+    """hook_body() must wrap each warpline command with a portable `timeout`
+    guard: detect the binary with `command -v timeout`, then prefix each
+    command invocation with the variable.  The BEGIN/END markers and exit 0
+    must still be present.
+    """
+    body = hook_body("warpline")
+
+    # Portability guard must be present
+    assert "command -v timeout" in body
+
+    # Both commands must be prefixed with the timeout variable
+    assert "$_wl_timeout warpline ingest-commit HEAD" in body
+    assert "$_wl_timeout warpline reresolve-sei --limit 25" in body
+
+    # Structural invariants must be preserved
+    assert "# BEGIN WARPLINE MANAGED BLOCK" in body
+    assert "# END WARPLINE MANAGED BLOCK" in body
+    assert "exit 0" in body
