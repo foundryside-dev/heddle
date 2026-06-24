@@ -8,6 +8,21 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [1.1.3] - 2026-06-24
+
+Patch release fixing stale self-reported version metadata. Frozen
+`warpline.<contract>.v1` MCP contracts remain unchanged.
+
+### Fixed
+
+- `warpline.__version__` is now derived from the installed package metadata
+  (`importlib.metadata`) instead of a hand-maintained literal in
+  `__init__.py`. That literal went stale at 1.1.2, so `warpline --version`,
+  the MCP `serverInfo.version`, and every response envelope's
+  `meta.producer.version` reported `1.1.1` on the 1.1.2 build. The version is
+  now single-sourced from `pyproject` and cannot drift; the package-version
+  test asserts that property rather than pinning a literal.
+
 ## [1.1.2] - 2026-06-24
 
 Patch release fixing a post-commit hook hang. Frozen `warpline.<contract>.v1`
