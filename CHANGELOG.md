@@ -8,6 +8,30 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [1.1.2] - 2026-06-24
+
+Patch release fixing a post-commit hook hang. Frozen `warpline.<contract>.v1`
+MCP contracts remain unchanged.
+
+### Fixed
+
+- The Loomweave MCP client (`LoomweaveMcpClient`) now enforces a single
+  per-request **deadline** instead of a per-`select()` timeout. Previously the
+  10s timeout was reset on every read, so a `loomweave serve` that emitted any
+  output within each window (notifications, log lines, partial frames, or
+  unmatched envelopes) while never completing the matching response made
+  `call_tool` loop forever — hanging the post-commit hook (the fail-soft
+  `try/except` never fired because nothing raised). The read loop now bounds the
+  whole request: `select()` is given the *remaining* time and the deadline is
+  checked each iteration, so a stalled Loomweave surfaces as a `TimeoutError`
+  that the hook's fail-soft path catches.
+
+### Changed
+
+- The installed post-commit hook now wraps each Warpline command in a portable
+  `timeout` guard (when `timeout` is on `PATH`) as defense-in-depth, so no
+  client can ever wedge a commit workflow.
+
 ## [1.1.1] - 2026-06-22
 
 Patch release for snapshot-capture correctness and release hygiene. Frozen
