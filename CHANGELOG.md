@@ -8,6 +8,34 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [1.2.0] - 2026-06-24
+
+Minor release: spine hardening. Snapshot capture is now correct-by-construction and
+every enrichment dimension carries an explanatory weft-reason. Frozen
+`warpline.<contract>.v1` MCP contracts are unchanged; the success envelope gains one
+additive top-level key (`enrichment_reasons`).
+
+### Added
+
+- **`enrichment_reasons`** — a new top-level success-envelope key carrying the
+  `{reason_class, cause, fix}` weft-reason triple per enrichment dimension, so every
+  absence reads as *explained* absence (the closed six-key `enrichment` vocab is
+  unchanged). The `sei`, `governance`, and reserved `requirements` dimensions now
+  carry triples (never-resolved vs Loomweave-unreachable; rename-feed present vs
+  absent; reserved-but-honest), built only from the canonical reason classes.
+- **Conformance** — four new golden vectors (`GV-LW-6`, `GV-HON-SEI/GOV/REQ`; 18
+  total) lock the atomic-capture and honesty invariants; the golden-vector fixture is
+  now portable for the GS-7 5th-producer oracle, with a hub handover package under
+  `docs/integration/`.
+
+### Changed
+
+- **Snapshot edge-capture is now correct-by-construction** — a single `BEGIN
+  IMMEDIATE` transaction (`capture_snapshot_atomic`) replaces the prior multi-step
+  write. A snapshot is never visible until all its edges are committed, and a
+  mid-capture failure leaves the prior good snapshot intact (fail-closed, locked by a
+  regression test + `GV-LW-6`).
+
 ## [1.1.3] - 2026-06-24
 
 Patch release fixing stale self-reported version metadata. Frozen
