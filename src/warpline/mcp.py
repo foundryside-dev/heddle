@@ -240,6 +240,28 @@ TOOL_SPECS = [
             federation_dependencies=["loomweave"],
         ),
     ),
+    _tool_spec(
+        endorsed="warpline_verification_record",
+        shim="verify_record",
+        schema=commands.SCHEMA_VERIFICATION_RECORD,
+        description=(
+            "Record a verification (gate-pass) for a commit, e.g. test_pass. Mutates ONLY "
+            ".weft/warpline state; never a sibling repo. Advisory; warpline never gates."
+        ),
+        input_properties={
+            "commit": {"type": "string"},
+            "kind": {"type": "string"},
+            "actor": {"type": ["string", "null"]},
+        },
+        required=["repo", "commit", "kind"],
+        metadata=_metadata(
+            read_only=False,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/warpline/"],
+            federation_dependencies=[],
+        ),
+    ),
 ]
 
 
@@ -433,10 +455,19 @@ def _h_capture(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _h_verify_record(args: dict[str, Any]) -> dict[str, Any]:
+    return commands.verify_record(
+        _repo_arg(args),
+        commit=str(args.get("commit", "")),
+        kind=str(args.get("kind", "")),
+        actor=_opt_str(args, "actor"),
+    )
+
+
 _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 for _spec, _handler in zip(
     TOOL_SPECS,
-    [_h_change_list, _h_timeline, _h_churn, _h_impact, _h_reverify, _h_capture],
+    [_h_change_list, _h_timeline, _h_churn, _h_impact, _h_reverify, _h_capture, _h_verify_record],
     strict=True,
 ):
     _HANDLERS[_spec["endorsed"]] = _handler
@@ -519,6 +550,7 @@ _HANDLER_CONSUMES: dict[str, frozenset[str]] = {
             "idempotency_key",
         }
     ),
+    "warpline_verification_record": frozenset({"repo", "commit", "kind", "actor"}),
 }
 
 # The fast-follow placeholder set is EMPTY for every tool: there is no
@@ -535,6 +567,7 @@ _KNOWN_FASTFOLLOW_DEAD: dict[str, frozenset[str]] = {
     "warpline_impact_radius_get": frozenset(),
     "warpline_reverify_worklist_get": frozenset(),
     "warpline_edge_snapshot_capture": frozenset(),
+    "warpline_verification_record": frozenset(),
 }
 
 

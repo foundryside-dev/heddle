@@ -51,8 +51,11 @@ def test_mcp_tool_inventory_is_agent_first_and_enrich_only() -> None:
     } <= set(names)
     for tool in tools:
         assert isinstance(tool, dict)
-        is_capture = tool["name"] in {"capture_snapshot", "warpline_edge_snapshot_capture"}
-        assert tool["mutates"] is is_capture
+        is_mutating = tool["name"] in {
+            "capture_snapshot", "warpline_edge_snapshot_capture",
+            "verify_record", "warpline_verification_record",
+        }
+        assert tool["mutates"] is is_mutating
         assert tool["local_only"] is True
         assert tool["peer_side_effects"] == []
         assert isinstance(tool["read_only"], bool)

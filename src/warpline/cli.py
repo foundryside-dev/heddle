@@ -337,6 +337,13 @@ def build_parser() -> argparse.ArgumentParser:
     capture_snapshot_parser.add_argument("--loomweave-command", default="loomweave")
     capture_snapshot_parser.add_argument("--json", action="store_true")
 
+    verify_record_parser = sub.add_parser("verify-record")
+    verify_record_parser.add_argument("--repo", type=Path, default=Path("."))
+    verify_record_parser.add_argument("--commit", required=True)
+    verify_record_parser.add_argument("--kind", required=True)
+    verify_record_parser.add_argument("--actor")
+    verify_record_parser.add_argument("--json", action="store_true")
+
     dogfood_parser = sub.add_parser("dogfood-eval")
     dogfood_parser.add_argument("--output", type=Path, default=DEFAULT_DOGFOOD_RESULTS)
     dogfood_parser.add_argument("--work-dir", type=Path)
@@ -529,6 +536,19 @@ def main(argv: list[str] | None = None) -> int:
             loomweave_command=args.loomweave_command,
         )
         print(json.dumps(payload, sort_keys=True) if args.json else json.dumps(payload, indent=2))
+        return 0
+    if args.command == "verify-record":
+        payload = commands.verify_record(
+            args.repo,
+            commit=args.commit,
+            kind=args.kind,
+            actor=args.actor,
+        )
+        print(
+            json.dumps(payload, sort_keys=True)
+            if args.json
+            else json.dumps(payload, indent=2)
+        )
         return 0
     if args.command == "dogfood-eval":
         payload = run_dogfood_evaluator(

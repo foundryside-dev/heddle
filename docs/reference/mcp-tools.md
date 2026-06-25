@@ -31,10 +31,12 @@ There are **six** frozen federation tools. Each is registered under **two** name
 | `warpline_impact_radius_get` | `blast_radius` | `warpline.impact_radius.v1` | no |
 | `warpline_reverify_worklist_get` | `reverify` | `warpline.reverify_worklist.v1` | no |
 | `warpline_edge_snapshot_capture` | `capture_snapshot` | `warpline.edge_snapshot.v1` | yes (local only) |
+| `warpline_verification_record` | `verify_record` | `warpline.verification_record.v1` | yes (local only) |
 
 All tools require `repo` (a path string). The read tools are marked
-`read_only: true` but may initialize `.weft/warpline/` state on first touch; only
-`warpline_edge_snapshot_capture` records new facts.
+`read_only: true` but may initialize `.weft/warpline/` state on first touch.
+`warpline_edge_snapshot_capture` and `warpline_verification_record` are the two
+mutating tools — both write only to `.weft/warpline/`.
 
 ## The success envelope
 
@@ -371,3 +373,37 @@ With loomweave absent, `completeness` is `SKIPPED` and `source_version` is
 capture (listed in `failed_entities`); the snapshot is usable but a floor.
 `enrichment.sei` is `unavailable` when loomweave was unreachable (the SEI authority
 could not be consulted), else `absent`.
+
+---
+
+## `warpline_verification_record` / `verify_record`
+
+`warpline.verification_record.v1` — **2nd mutating tool**. Records a gate-pass
+verification event for a commit into `.weft/warpline/`. Never mutates a sibling repo.
+Advisory; warpline never gates. Idempotent on `(repo, commit, kind, source=warpline)`.
+
+**Input**
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `repo` | string | (required) |
+| `commit` | string | (required) commit ref — resolved to object SHA before storage; symbolic refs are never persisted. |
+| `kind` | string | (required) free-form non-empty provenance label, e.g. `test_pass`, `ci_pass`, `gate_pass`. |
+| `actor` | string \| null | optional — who recorded the event. |
+
+**`data`**
+
+```json
+{
+  "commit_sha": "...",
+  "kind": "test_pass",
+  "verified_at": "2026-06-25T10:00:00+00:00",
+  "actor": "ci",
+  "source": "warpline",
+  "idempotency": "recorded | already_recorded"
+}
+```
+
+`idempotency: already_recorded` means the row already existed (a second call for
+the same `(repo, commit, kind)` tuple is a no-op — exactly one row is stored).
+All enrichment keys are `absent` (no graph-layer dependency).

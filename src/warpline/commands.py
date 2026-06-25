@@ -14,8 +14,9 @@ from warpline._enrichment import (
     staleness_warnings,
 )
 from warpline.envelope import build_envelope, enrichment_state
-from warpline.errors import BadRevisionError, InvalidChangedRefsError
+from warpline.errors import BadRevisionError, InvalidChangedRefsError, MissingRequiredFieldError
 from warpline.federation import LegisClient, RiskClient, consult_federation
+from warpline.git import resolve_commit
 from warpline.listing import (
     apply_filters,
     apply_group_by,
@@ -48,6 +49,7 @@ SCHEMA_ENTITY_CHURN_COUNT = "warpline.entity_churn_count.v1"
 SCHEMA_IMPACT_RADIUS = "warpline.impact_radius.v1"
 SCHEMA_REVERIFY_WORKLIST = "warpline.reverify_worklist.v1"
 SCHEMA_EDGE_SNAPSHOT = "warpline.edge_snapshot.v1"
+SCHEMA_VERIFICATION_RECORD = "warpline.verification_record.v1"
 
 
 def session_context(repo: Path) -> str:
@@ -1147,3 +1149,69 @@ def capture_snapshot(
             enrichment_reasons={"sei": capture_sei_triple},
             warnings=completeness_warnings(str(data["completeness"])) + warnings,
         )
+
+
+def verify_record(
+    repo: Path,
+    *,
+    commit: str,
+    kind: str,
+    actor: str | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Record a verification (gate-pass) event for ``commit``.
+
+    The 2nd mutating verb (besides capture-snapshot). Writes ONE row to the
+    local ``verification_events`` table (``.weft/warpline/`` only); never a
+    sibling repo. ``commit`` is resolved to an object SHA before storage — a
+    symbolic ref is never persisted. ``kind`` is a free-form non-empty provenance
+    label (e.g. ``test_pass`` / ``ci_pass`` / ``gate_pass``). Idempotent on
+    (repo, commit, kind, source=warpline).
+    """
+
+    kind_clean = kind.strip()
+    if not kind_clean:
+        raise MissingRequiredFieldError(
+            "kind must be a non-empty verification label, e.g. test_pass",
+            rejected_field="kind",
+        )
+    resolved = resolve_commit(repo, commit)
+    if resolved is None:
+        raise BadRevisionError(
+            f"could not resolve commit ref {commit!r} to an object SHA",
+            rejected_field="commit",
+        )
+    verified_at = now or _now().isoformat()
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        inserted = store.record_verification_event(
+            repo_id=repo_id,
+            commit_sha=resolved,
+            kind=kind_clean,
+            verified_at=verified_at,
+            actor=actor,
+            source="warpline",
+        )
+    data = {
+        "commit_sha": resolved,
+        "kind": kind_clean,
+        "verified_at": verified_at,
+        "actor": actor,
+        "source": "warpline",
+        "idempotency": "recorded" if inserted else "already_recorded",
+    }
+    query = {
+        "repo": str(repo),
+        "tool": "warpline_verification_record",
+        "arguments": {"commit": commit, "kind": kind, "actor": actor},
+        "filters": {},
+        "sort": {},
+        "page": {"limit": None, "cursor": None},
+    }
+    return build_envelope(
+        SCHEMA_VERIFICATION_RECORD,
+        query=query,
+        data=data,
+        enrichment=enrichment_state(),
+        warnings=[],
+    )
