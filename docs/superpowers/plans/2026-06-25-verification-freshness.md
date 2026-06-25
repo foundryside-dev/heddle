@@ -1980,6 +1980,7 @@ def test_gv_vf_1_reverify_verification_freshness_is_explained(tmp_path: Path) ->
     assert env2["data"]["verification_summary"]["local_source_configured"] is True
     assert env2["data"]["verification_summary"]["fresh"] >= 1
     assert env2["data"]["items"], "expected a non-empty worklist after verification"
+    assert any(i["reason"] == "changed" for i in env2["data"]["items"])
     fresh_item = next(i for i in env2["data"]["items"] if i["reason"] == "changed")
     assert fresh_item["verification"]["state"] == "fresh"
     assert fresh_item["verification"]["last_verified_commit"] == head
