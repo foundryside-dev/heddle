@@ -10,6 +10,12 @@ Freshness asks: has the entity's LATEST change been proven good by a recorded
 gate run? A gate run at commit ``V`` "covers" a change at commit ``C`` iff ``C``
 is an ancestor-or-equal of ``V`` (the gate ran at or after the change landed).
 Absence is always EXPLAINED via a weft-reason triple; it never reads as verified.
+
+For the STALE path, decay uses the TIGHTEST git cover — the covering event whose
+commit is fewest commits behind the latest change (the most-advanced proof
+available) — not the most-recently-recorded covering event. This ensures
+``decay.commits_behind`` reflects the best verification already on record,
+regardless of the order in which events were written.
 """
 
 from __future__ import annotations
@@ -20,31 +26,50 @@ from typing import Any
 from warpline.listing import reason
 
 
-def _latest_covering_event(
+def _tightest_covering_event(
     change_commits: list[str],
     events: list[dict[str, Any]],
     covers: Callable[[str, str], bool | None],
-) -> tuple[dict[str, Any] | None, bool]:
-    """Return (most-recent event covering ANY change, saw_undetermined).
+    commits_between: Callable[[str, str], int | None],
+    latest_change: str,
+) -> tuple[dict[str, Any] | None, int | None, bool]:
+    """Return (tightest covering event, its commits_behind, saw_undetermined).
 
-    ``events`` is oldest-first, so the last covering event by iteration is the
-    most-recent by ``verified_at``. ``saw_undetermined`` is True if any
-    ``covers`` call returned None (git could not decide) — the caller uses it to
-    fail-soft to ``unavailable`` rather than claim a clean ``unverified``.
+    A "covering" event covers at least one of ``change_commits``. Among them, pick
+    the TIGHTEST cover — the one whose commit is fewest commits behind
+    ``latest_change`` (minimal ``commits_between(event_commit, latest_change)``) —
+    so decay reflects the most-advanced proof, not merely the most-recently
+    recorded. ``events`` is oldest-first; ties on distance break toward the most
+    recent ``verified_at`` (later iteration). If covering events exist but none has
+    a computable distance, fall back to the most-recent covering event with a None
+    decay. ``saw_undetermined`` is True if any ``covers`` call returned None.
     """
-
-    latest: dict[str, Any] | None = None
+    best_event: dict[str, Any] | None = None
+    best_dist: int | None = None
+    fallback_event: dict[str, Any] | None = None
     saw_undetermined = False
     for event in events:
         verified_commit = str(event.get("commit_sha"))
+        covers_any = False
         for change_commit in change_commits:
             result = covers(verified_commit, change_commit)
             if result is None:
                 saw_undetermined = True
             elif result is True:
-                latest = event  # later events overwrite -> most-recent wins
+                covers_any = True
                 break
-    return latest, saw_undetermined
+        if not covers_any:
+            continue
+        fallback_event = event  # oldest-first -> last covering wins as fallback
+        dist = commits_between(verified_commit, latest_change)
+        if dist is None:
+            continue
+        if best_dist is None or dist <= best_dist:  # tie -> most recent (later) wins
+            best_dist = dist
+            best_event = event
+    if best_event is not None:
+        return best_event, best_dist, saw_undetermined
+    return fallback_event, None, saw_undetermined
 
 
 def compose_verification_freshness(
@@ -87,16 +112,15 @@ def compose_verification_freshness(
     # we'd have returned unavailable above). Does any event cover an EARLIER
     # change? Check only [:-1] — the latest is already known uncovered, so
     # re-checking it would waste a covers() call.
-    covering_event, earlier_undetermined = _latest_covering_event(
-        entity_change_commits[:-1], verification_events, covers
+    covering_event, commits_behind, earlier_undetermined = _tightest_covering_event(
+        entity_change_commits[:-1], verification_events, covers, commits_between, latest_change
     )
     if covering_event is not None:
-        last_commit = str(covering_event.get("commit_sha"))
         return {
             "state": "stale",
             "last_verified_at": covering_event.get("verified_at"),
             "last_verified_commit": covering_event.get("commit_sha"),
-            "decay": {"commits_behind": commits_between(last_commit, latest_change)},
+            "decay": {"commits_behind": commits_behind},
             "reason": reason(
                 "stale",
                 cause=(

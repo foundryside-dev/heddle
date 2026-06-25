@@ -150,3 +150,23 @@ def test_fresh_when_one_event_covers_latest_and_another_is_undetermined() -> Non
     out = compose_verification_freshness(["C1"], events, covers, _between_const(0))
     assert out["state"] == "fresh"
     assert out["last_verified_commit"] == "V2"
+
+
+def test_stale_decay_uses_tightest_cover_not_latest_recorded() -> None:
+    # Two covering events for earlier changes, recorded OUT of git-ancestry order:
+    # V_new is a more-advanced commit (tighter cover, 1 commit behind) recorded
+    # FIRST; V_old is a less-advanced commit (6 behind) recorded LATER. Decay must
+    # use the tightest cover (V_new -> 1), not the latest-recorded (V_old -> 6).
+    events = [
+        {"commit_sha": "V_new", "verified_at": "2026-06-25T10:00:00+00:00"},  # recorded first
+        {"commit_sha": "V_old", "verified_at": "2026-06-25T12:00:00+00:00"},  # recorded later
+    ]
+    changes = ["C0", "C1", "C2"]  # latest = C2, uncovered by both
+    def covers(verified: str, change: str) -> bool | None:
+        return False if change == "C2" else True  # both cover earlier changes only
+    def between(ancestor: str, descendant: str) -> int | None:
+        return {"V_new": 1, "V_old": 6}.get(ancestor)  # distance from each cover to C2
+    out = compose_verification_freshness(changes, events, covers, between)
+    assert out["state"] == "stale"
+    assert out["last_verified_commit"] == "V_new"   # tightest cover, NOT latest-recorded V_old
+    assert out["decay"]["commits_behind"] == 1
