@@ -63,6 +63,16 @@
     "governance": "unavailable",
     "requirements": "unavailable"
   },
+  "enrichment_reasons": {
+    "requirements": {
+      "reason_class": "disabled",
+      "cause": "the requirements dimension is reserved in the frozen enrichment vocab but no requirements-trace transport is wired in warpline yet",
+      "fix": "wire a requirements-trace consumer (e.g. a legis/requirements read keyed on the SEI) and populate enrichment.requirements; until then it is honestly reserved, not an earned-empty"
+    },
+    "sei": {
+      "reason_class": "clean"
+    }
+  },
   "meta": {
     "producer": {"tool": "warpline", "version": "0.1.0"},
     "local_only": true,
