@@ -194,6 +194,35 @@ def _migrate_v3_co_change_pairs(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v4_verification_events(conn: sqlite3.Connection) -> None:
+    """v4 (Rung 2 Track B): verification-freshness events.
+
+    ``verification_events`` records a per-commit gate-pass fact ("gate ``kind``
+    passed as-of commit ``commit_sha``"), one row per run — mirroring
+    ``change_events``. Freshness is computed at read time by git reachability
+    (is a change commit an ancestor-or-equal of a verified commit), never by
+    stamping every entity. Warpline OWNS this fact (its own gate result); it
+    mirrors no sibling. ``commit_sha`` is always a resolved object SHA, never a
+    symbolic ref. The UNIQUE key makes a re-record of the same (repo, commit,
+    kind, source) idempotent.
+    """
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          repo_id TEXT NOT NULL,
+          commit_sha TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          verified_at TEXT NOT NULL,
+          actor TEXT,
+          source TEXT NOT NULL DEFAULT 'warpline',
+          UNIQUE(repo_id, commit_sha, kind, source)
+        )
+        """
+    )
+
+
 # Ordered, forward-only migrations. Each step's ``version`` is strictly greater
 # than the previous. v2 (anchor columns) lands in Rung 1b; v3 (co_change_pairs)
 # in Rung 2 Track A.
@@ -204,6 +233,7 @@ def _migrate_v3_co_change_pairs(conn: sqlite3.Connection) -> None:
 MIGRATIONS: list[Migration] = [
     Migration(version=2, apply=_migrate_v2_anchor_columns),
     Migration(version=3, apply=_migrate_v3_co_change_pairs),
+    Migration(version=4, apply=_migrate_v4_verification_events),
 ]
 
 # Highest schema version this build knows how to produce. Equals the base
@@ -316,9 +346,38 @@ def _schema_presence_floor(conn: sqlite3.Connection, claimed: int) -> int:
         if not _table_exists(conn, "co_change_pairs"):
             return floor
         floor = 3
+    # v4 (Rung 2 Track B): the verification_events table.
+    if claimed >= 4:
+        if not _table_exists(conn, "verification_events"):
+            return floor
+        floor = 4
     # All checkable objects present: trust the marker as-is (never DOWNGRADE a
     # legitimately-ahead version we simply cannot fully verify).
     return claimed
+
+
+_TOP_VERSION_OBJECTS_VERSION = 4  # Must equal HIGHEST_KNOWN_VERSION after migration bump.
+
+
+def _top_version_objects_present(conn: sqlite3.Connection) -> bool:
+    """Check that the artefacts for HIGHEST_KNOWN_VERSION specifically are on disk.
+
+    Used by the non-zero ``user_version`` path of ``_run_migrations`` to guard
+    against externally-dropped tables (corruption, manual tooling, partial
+    restore) without re-scanning lower versions — those were verified by the
+    runner in a prior session that wrote the ``user_version`` marker.
+
+    The caller first checks ``HIGHEST_KNOWN_VERSION == _TOP_VERSION_OBJECTS_VERSION``
+    so this function is only invoked when the running code matches the version it
+    was written for, preventing interference with monkeypatched synthetic-migration
+    tests (which don't create real schema objects for their synthetic version numbers).
+
+    Bump ``_TOP_VERSION_OBJECTS_VERSION`` and the check below alongside each
+    migration bump to ``HIGHEST_KNOWN_VERSION``.
+    """
+
+    # v4 (Rung 2 Track B): the verification_events table.
+    return _table_exists(conn, "verification_events")
 
 
 def _run_migrations(conn: sqlite3.Connection) -> None:
@@ -416,6 +475,35 @@ def _run_migrations(conn: sqlite3.Connection) -> None:
         )
         conn.commit()
         return
+
+    # #9 guard for non-zero user_version == HIGHEST_KNOWN_VERSION: user_version
+    # is written by THIS runner, but on-disk objects can be dropped externally
+    # (corruption, manual tooling, partial restore). Only check the top (newest)
+    # migration's artefacts — lower versions were verified by the runner in the
+    # prior session. Guard with _TOP_VERSION_OBJECTS_VERSION so the check is
+    # skipped when HIGHEST_KNOWN_VERSION is monkeypatched to a synthetic value
+    # that doesn't correspond to real schema objects.
+    if (
+        current == HIGHEST_KNOWN_VERSION
+        and HIGHEST_KNOWN_VERSION == _TOP_VERSION_OBJECTS_VERSION
+        and not _top_version_objects_present(conn)
+    ):
+        prior = current - 1
+        logger.warning(
+            "warpline store: user_version=%d but top-version schema objects are "
+            "missing; re-running migrations from v%d",
+            current,
+            prior,
+        )
+        _store_health(
+            conn,
+            "MIGRATION_META_SCHEMA_GAP",
+            f"user_version={current} but top-version objects absent; "
+            f"re-running from {prior}",
+        )
+        conn.execute(f"PRAGMA user_version = {prior}")
+        conn.commit()
+        current = prior
 
     for migration in MIGRATIONS:
         if migration.version <= current:
@@ -999,6 +1087,92 @@ class WarplineStore:
              ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
             """,
             params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_verification_event(
+        self,
+        *,
+        repo_id: str,
+        commit_sha: str,
+        kind: str,
+        verified_at: str,
+        actor: str | None,
+        source: str = "warpline",
+    ) -> bool:
+        """Record one gate-pass fact. Idempotent on (repo, commit, kind, source).
+
+        Returns True if a NEW row was inserted, False if an identical event
+        already existed (the ``INSERT OR IGNORE`` was a no-op). This gives the
+        verb an O(1), race-free idempotency signal without a second table scan.
+        ``commit_sha`` must be a resolved object SHA (the caller resolves the ref).
+        """
+
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO verification_events(
+              repo_id, commit_sha, kind, verified_at, actor, source
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (repo_id, commit_sha, kind, verified_at, actor, source),
+        )
+        inserted = cursor.rowcount > 0
+        self.conn.commit()
+        return inserted
+
+    def list_verification_events(self, repo: Path) -> list[dict[str, object]]:
+        """All verification events for ``repo``, ordered oldest-first by verified_at.
+
+        ``verified_at`` is ISO-8601 written by the verb. We do NOT lexical-sort:
+        a caller-supplied ``now`` could carry a non-UTC offset, and a
+        chronologically-later ``...-04:00`` value sorts lexically BEFORE a UTC
+        ``...+00:00`` one — which would corrupt ``compose_verification_freshness``'s
+        most-recent-covering-event identification. So we normalize to the UTC
+        instant with ``datetime()`` (mirroring ``list_change_events`` at
+        ``store.py:~999``), and COALESCE back to the raw string so a value
+        ``datetime()`` cannot parse still sorts deterministically by its lexical
+        form rather than vanishing. ``id`` is the final tiebreak.
+        """
+
+        repo_id = self._repo_id(repo)
+        rows = self.conn.execute(
+            """
+            SELECT commit_sha, kind, verified_at, actor, source
+              FROM verification_events
+             WHERE repo_id = ?
+             ORDER BY COALESCE(datetime(verified_at), verified_at), id
+            """,
+            (repo_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_change_events_for_key_ids(
+        self, repo: Path, key_ids: list[int]
+    ) -> list[dict[str, object]]:
+        """Change events filtered to ``key_ids`` (reverify's verification path).
+
+        Pushes the entity filter into SQL (``WHERE ce.entity_key_id IN (...)``)
+        so reverify does not full-table-scan every change event in the repo just
+        to group commits by the handful of entities in the worklist. Empty
+        ``key_ids`` short-circuits to ``[]``. Returns the same row shape as
+        ``list_change_events`` (carries ``entity_key_id``, ``commit_sha``,
+        ``changed_at``), ordered oldest-first by the normalized ``changed_at``
+        instant then ``id`` so callers can take the latest change as the last row.
+        """
+
+        if not key_ids:
+            return []
+        repo_id = self._repo_id(repo)
+        placeholders = ",".join("?" for _ in key_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT ce.commit_sha, ce.changed_at, ce.entity_key_id
+              FROM change_events ce
+             WHERE ce.repo_id = ?
+               AND ce.entity_key_id IN ({placeholders})
+             ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
+            """,
+            (repo_id, *sorted(set(key_ids))),
         ).fetchall()
         return [dict(row) for row in rows]
 
