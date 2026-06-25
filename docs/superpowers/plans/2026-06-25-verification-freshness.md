@@ -72,7 +72,7 @@ These bind **every** task. Copied from the spec and the frozen contract:
 **Interfaces:**
 - Consumes: existing `WarplineStore.open(path)`, `ensure_repo(repo) -> str`, `_repo_id(repo) -> str`, `default_store_path(repo)`.
 - Produces:
-  - `WarplineStore.record_verification_event(*, repo_id: str, commit_sha: str, kind: str, verified_at: str, actor: str | None, source: str = "warpline") -> None` — `INSERT OR IGNORE` (idempotent on the UNIQUE key), commits.
+  - `WarplineStore.record_verification_event(*, repo_id: str, commit_sha: str, kind: str, verified_at: str, actor: str | None, source: str = "warpline") -> bool` — `INSERT OR IGNORE` (idempotent on the UNIQUE key), commits; returns `True` if a new row was inserted, `False` if it already existed.
   - `WarplineStore.list_verification_events(repo: Path) -> list[dict[str, object]]` — all rows for the repo, ordered **oldest-first by the normalized `verified_at` instant** then `id` (NOT a raw lexical sort — see Step 5; a caller-supplied non-UTC offset must still sort chronologically). Each dict has keys `commit_sha`, `kind`, `verified_at`, `actor`, `source`.
   - `WarplineStore.list_change_events_for_key_ids(repo: Path, key_ids: list[int]) -> list[dict[str, object]]` — change events filtered to the given entity key ids (empty list → `[]`). Avoids the full-table scan when reverify only needs the worklist's entities.
   - Schema is at version **4**; presence-floor recognises `verification_events`. (This also requires updating the existing `tests/test_store_migrations.py` pin — Step 6b.)
@@ -216,6 +216,25 @@ def test_list_change_events_for_key_ids_filters(tmp_path: Path) -> None:
         only_k1 = store.list_change_events_for_key_ids(tmp_path, [k1])
         assert {r["entity_key_id"] for r in only_k1} == {k1}
         assert store.list_change_events_for_key_ids(tmp_path, []) == []
+
+
+def test_list_change_events_for_key_ids_is_oldest_first(tmp_path: Path) -> None:
+    # Ordering is load-bearing: compose_verification_freshness treats
+    # entity_change_commits[-1] as the LATEST change. A wrong ORDER BY would make
+    # the OLDEST change the "latest" and silently report stale-as-fresh.
+    with _open(tmp_path) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        k = store.ensure_entity_key(repo_id, "python:function:m.py::f", None, "1" * 40)
+        store.append_change_event(
+            repo_id=repo_id, entity_key_id=k, commit_sha="1" * 40, path="m.py",
+            change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
+        )
+        store.append_change_event(
+            repo_id=repo_id, entity_key_id=k, commit_sha="2" * 40, path="n.py",
+            change_kind="modified", actor="dev", changed_at="2026-06-25T20:00:00+00:00",
+        )
+        rows = store.list_change_events_for_key_ids(tmp_path, [k])
+        assert [r["commit_sha"] for r in rows] == ["1" * 40, "2" * 40]  # oldest-first
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -295,13 +314,16 @@ In `src/warpline/store.py`, alongside the other `change_events` accessors (after
         verified_at: str,
         actor: str | None,
         source: str = "warpline",
-    ) -> None:
+    ) -> bool:
         """Record one gate-pass fact. Idempotent on (repo, commit, kind, source).
 
+        Returns True if a NEW row was inserted, False if an identical event
+        already existed (the ``INSERT OR IGNORE`` was a no-op). This gives the
+        verb an O(1), race-free idempotency signal without a second table scan.
         ``commit_sha`` must be a resolved object SHA (the caller resolves the ref).
         """
 
-        self.conn.execute(
+        cursor = self.conn.execute(
             """
             INSERT OR IGNORE INTO verification_events(
               repo_id, commit_sha, kind, verified_at, actor, source
@@ -309,7 +331,9 @@ In `src/warpline/store.py`, alongside the other `change_events` accessors (after
             """,
             (repo_id, commit_sha, kind, verified_at, actor, source),
         )
+        inserted = cursor.rowcount > 0
         self.conn.commit()
+        return inserted
 
     def list_verification_events(self, repo: Path) -> list[dict[str, object]]:
         """All verification events for ``repo``, ordered oldest-first by verified_at.
@@ -371,18 +395,25 @@ In `src/warpline/store.py`, alongside the other `change_events` accessors (after
 - [ ] **Step 6: Run the new tests to verify they pass**
 
 Run: `uv run pytest tests/test_verification_store.py -v`
-Expected: PASS (10 tests).
+Expected: PASS (11 tests).
 
 - [ ] **Step 6b: Update the existing migration-version pin (REQUIRED — this hard-fails otherwise)**
 
-`tests/test_store_migrations.py:48` currently reads `assert store_mod.HIGHEST_KNOWN_VERSION == 3` (with a stale comment on lines 45-46). Bumping the schema to v4 makes this assert fail. Update it:
+`tests/test_store_migrations.py:48` currently reads `assert store_mod.HIGHEST_KNOWN_VERSION == 3`. Bumping the schema to v4 makes it fail. Update the assertion AND every stale-v3 prose/comment site the reviewer located (grep first to confirm current wording — `grep -n "HIGHEST_KNOWN_VERSION\|== 3\|v3\|co_change\|schema_version" tests/test_store_migrations.py`):
 
 ```python
 # tests/test_store_migrations.py — change the version assertion (was == 3)
     assert store_mod.HIGHEST_KNOWN_VERSION == 4
 ```
 
-And update the comment on the preceding lines to name v4 (`verification_events`, Rung 2 Track B). Grep first to confirm the exact line/wording: `grep -n "HIGHEST_KNOWN_VERSION\|== 3\|co_change" tests/test_store_migrations.py`. If that file also enumerates expected migration versions or table names (e.g. an expected-tables set), add `verification_events` / version `4` there too.
+Sites to update (verified by the plan-review reality pass):
+- **line 48** — `assert ... == 3` → `== 4` (the hard pin).
+- **lines 45-46** — comment "highest known version is 3" → name v4.
+- **line 131** — prose "lands at v3" → "lands at v4".
+- **lines 166-169** — docstring "meta.schema_version=3" → 4.
+- **line 175** — "co_change_pairs (v3)" → mention `verification_events` (v4) as the new highest.
+
+Do NOT touch the DYNAMIC refs (lines 44, 47, 82, 96, 187, 198 — they read `HIGHEST_KNOWN_VERSION`/`MIGRATIONS` programmatically) or the monkeypatch synthetic-migration block (lines 217-288 — it sets `HIGHEST_KNOWN_VERSION` explicitly and is inert to the real bump). After editing, run the whole file and treat ANY remaining comment/assertion mismatch as required to fix, not optional polish. If the file also enumerates an expected-tables set, add `verification_events`.
 
 - [ ] **Step 7: Run the full store-affecting suite + types**
 
@@ -730,6 +761,22 @@ def test_most_recent_covering_event_wins_last_verified() -> None:
     assert out["state"] == "fresh"
     assert out["last_verified_commit"] == "V2"
     assert out["last_verified_at"] == "2026-06-25T11:00:00+00:00"
+
+
+def test_unavailable_when_latest_undetermined_even_if_earlier_covered() -> None:
+    # Fail-soft precedence: if git cannot decide the LATEST change's coverage,
+    # the state is 'unavailable' even when an EARLIER change is covered — never
+    # 'stale' (which would falsely imply we KNOW it drifted) and never 'fresh'.
+    events = [{"commit_sha": "V1", "verified_at": "2026-06-25T10:00:00+00:00"}]
+
+    def covers(verified: str, change: str) -> bool | None:
+        if change == "C1":
+            return None   # latest change: git cannot decide
+        return True       # earlier change C0: covered
+
+    out = compose_verification_freshness(["C0", "C1"], events, covers, _between_const(0))
+    assert out["state"] == "unavailable"
+    assert out["reason"]["reason_class"] == "unreachable"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -825,9 +872,12 @@ def compose_verification_freshness(
     if latest_saw_undetermined:
         return _unavailable()
 
-    # Latest definitively uncovered. Does any event cover an EARLIER change?
+    # Latest definitively uncovered (all covers() returned False, no None — else
+    # we'd have returned unavailable above). Does any event cover an EARLIER
+    # change? Check only [:-1] — the latest is already known uncovered, so
+    # re-checking it would waste a covers() call.
     covering_event, earlier_undetermined = _latest_covering_event(
-        entity_change_commits, verification_events, covers
+        entity_change_commits[:-1], verification_events, covers
     )
     if covering_event is not None:
         last_commit = str(covering_event.get("commit_sha"))
@@ -898,7 +948,7 @@ def _unavailable() -> dict[str, Any]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_verification_compose.py -v`
-Expected: PASS (7 tests).
+Expected: PASS (8 tests).
 
 - [ ] **Step 5: Types + lint**
 
@@ -966,6 +1016,15 @@ def _git_repo(tmp_path: Path) -> tuple[Path, str]:
     return repo, sha
 
 
+def test_mcp_module_imports() -> None:
+    # mcp.py runs assert_inputschema_consumed() + a strict zip at IMPORT time; a
+    # missing consume-declaration or handler crashes here. Keep this first so an
+    # import crash is distinguishable from a metadata-assertion failure below.
+    from warpline import mcp
+
+    assert mcp.TOOL_SPECS
+
+
 def test_verify_record_stores_resolved_sha(tmp_path: Path) -> None:
     repo, sha = _git_repo(tmp_path)
     env = commands.verify_record(
@@ -1008,6 +1067,15 @@ def test_verify_record_idempotent_across_different_timestamps(tmp_path: Path) ->
     commands.verify_record(repo, commit="HEAD", kind="test_pass", now="2026-06-25T23:00:00+00:00")
     with WarplineStore.open(default_store_path(repo)) as store:
         assert len(store.list_verification_events(repo)) == 1
+
+
+def test_verify_record_in_detached_head(tmp_path: Path) -> None:
+    # CI commonly runs on a detached HEAD. verify_record(commit="HEAD") must still
+    # resolve HEAD to the detached commit's object SHA and store that.
+    repo, sha = _git_repo(tmp_path)
+    subprocess.run(["git", "checkout", "-q", sha], cwd=repo, check=True, capture_output=True)
+    env = commands.verify_record(repo, commit="HEAD", kind="ci_pass", now="2026-06-25T10:00:00+00:00")
+    assert env["data"]["commit_sha"] == sha
 
 
 def test_cli_verify_record_bad_commit_does_not_exit_zero(tmp_path: Path) -> None:
@@ -1116,8 +1184,7 @@ def verify_record(
     verified_at = now or _now().isoformat()
     with WarplineStore.open(default_store_path(repo)) as store:
         repo_id = store.ensure_repo(repo)
-        before = len(store.list_verification_events(repo))
-        store.record_verification_event(
+        inserted = store.record_verification_event(
             repo_id=repo_id,
             commit_sha=resolved,
             kind=kind_clean,
@@ -1125,14 +1192,13 @@ def verify_record(
             actor=actor,
             source="warpline",
         )
-        after = len(store.list_verification_events(repo))
     data = {
         "commit_sha": resolved,
         "kind": kind_clean,
         "verified_at": verified_at,
         "actor": actor,
         "source": "warpline",
-        "idempotency": "recorded" if after > before else "already_recorded",
+        "idempotency": "recorded" if inserted else "already_recorded",
     }
     query = {
         "repo": str(repo),
@@ -1460,15 +1526,12 @@ def test_envelope_stays_local_only(tmp_path: Path) -> None:
     assert "verification" not in env["enrichment_reasons"]
 
 
-def test_verification_summary_is_post_filter(tmp_path: Path) -> None:
-    # The summary must reflect the FILTERED set, not the whole blast radius.
+def test_verification_summary_is_post_filter_zero_case(tmp_path: Path) -> None:
     # Our entity has sei=None; filtering has_sei -> empty set -> all-zero summary.
     repo = _repo(tmp_path)
     c0 = _commit(repo, "m.py", "v0\n")
     with WarplineStore.open(default_store_path(repo)) as store:
         key_id = _seed_entity_change(store, repo, "python:function:m.py::f", c0)
-    # NOTE: confirm the exact filters= dict shape + key from an existing reverify
-    # filter test / apply_filters before finalizing (has_sei is a verified key).
     env = commands.reverify_worklist(repo, [key_id], filters={"has_sei": True})
     assert env["data"]["items"] == []
     summary = env["data"]["verification_summary"]
@@ -1476,6 +1539,28 @@ def test_verification_summary_is_post_filter(tmp_path: Path) -> None:
     assert summary["stale"] == 0
     assert summary["unverified"] == 0
     assert summary["unavailable"] == 0
+
+
+def test_verification_summary_counts_only_filtered_subset(tmp_path: Path) -> None:
+    # Two entities; one HAS an sei, one does not. Filtering has_sei=True keeps
+    # exactly ONE. The summary must count 1, not 2 — proving it is computed on the
+    # POST-filter set (a pre-filter computation would report 2).
+    repo = _repo(tmp_path)
+    c0 = _commit(repo, "m.py", "v0\n")
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        with_sei = store.ensure_entity_key(repo_id, "python:function:m.py::f", "lw:eid:has", c0)
+        without_sei = store.ensure_entity_key(repo_id, "python:function:m.py::g", None, c0)
+        for kid in (with_sei, without_sei):
+            store.append_change_event(
+                repo_id=repo_id, entity_key_id=kid, commit_sha=c0, path="m.py",
+                change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
+            )
+    env = commands.reverify_worklist(repo, [with_sei, without_sei], filters={"has_sei": True})
+    assert len(env["data"]["items"]) == 1
+    summary = env["data"]["verification_summary"]
+    total = summary["fresh"] + summary["stale"] + summary["unverified"] + summary["unavailable"]
+    assert total == 1  # NOT 2 — proves post-filter computation
 
 
 def test_unavailable_when_reachability_fails(tmp_path: Path, monkeypatch) -> None:
@@ -1512,18 +1597,62 @@ def test_stale_sorts_before_fresh_by_default(tmp_path: Path) -> None:
                 repo_id=repo_id, entity_key_id=b, commit_sha=sha, path="b.py",
                 change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
             )
+    # Seed FRESH first so the natural (pre-presort) order is fresh-then-stale;
+    # the presort must flip it. (Catches presort removal: without it the order
+    # stays fresh-first and this assertion fails.)
     env = commands.reverify_worklist(repo, [a, b])
     states = [i["verification"]["state"] for i in env["data"]["items"]]
     assert "stale" in states and "fresh" in states
     assert states.index("stale") < states.index("fresh")  # advisory: stale first
+
+
+def test_fresh_when_verified_at_a_later_commit(tmp_path: Path) -> None:
+    # Asymmetric real-git case that catches a covers/is_ancestor argument SWAP:
+    # change at c0, verify at c1 (c1 is a DESCENDANT of c0). c0 is an ancestor of
+    # c1, so the change IS covered -> fresh. A swapped is_ancestor(verified, change)
+    # would compute is_ancestor(c1, c0) -> False and wrongly report not-fresh.
+    repo = _repo(tmp_path)
+    c0 = _commit(repo, "m.py", "v0\n")
+    c1 = _commit(repo, "n.py", "v0\n")  # later commit, descendant of c0
+    with WarplineStore.open(default_store_path(repo)) as store:
+        key_id = _seed_entity_change(store, repo, "python:function:m.py::f", c0)
+    commands.verify_record(repo, commit=c1, kind="test_pass", now="2026-06-25T10:00:00+00:00")
+    env = commands.reverify_worklist(repo, [key_id])
+    item = next(i for i in env["data"]["items"] if i["reason"] == "changed")
+    assert item["verification"]["state"] == "fresh"
+    assert item["verification"]["last_verified_commit"] == c1
+
+
+def test_unavailable_when_change_commit_no_longer_exists(tmp_path: Path) -> None:
+    # Squash/rebase honesty: a change_event whose commit SHA was rewritten away
+    # (no longer a real object). With a recorded verification, git reachability
+    # cannot be computed -> 'unavailable'/'unreachable', NOT a silent 'unverified'
+    # (which would falsely imply "just needs verifying" instead of "trust unknown").
+    repo = _repo(tmp_path)
+    c0 = _commit(repo, "m.py", "v0\n")
+    commands.verify_record(repo, commit=c0, kind="test_pass", now="2026-06-25T10:00:00+00:00")
+    ghost = "0" * 40  # a SHA that never existed (rewritten by squash/rebase)
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        key_id = store.ensure_entity_key(repo_id, "python:function:m.py::f", None, ghost)
+        store.append_change_event(
+            repo_id=repo_id, entity_key_id=key_id, commit_sha=ghost, path="m.py",
+            change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
+        )
+    env = commands.reverify_worklist(repo, [key_id])
+    item = next(i for i in env["data"]["items"] if i["reason"] == "changed")
+    assert item["verification"]["state"] == "unavailable"
+    assert item["verification"]["reason"]["reason_class"] == "unreachable"
 ```
 
 > Before implementing, the engineer MUST verify the seeding helpers used here match real store signatures: `ensure_entity_key(repo_id, locator, sei, commit_sha) -> int` (`store.py:521`), `append_change_event(*, repo_id, entity_key_id, commit_sha, path, change_kind, actor, changed_at, ...)` (`store.py:881`). Adjust the test seeding if a signature differs.
 
+**ALSO write `test_stale_first_is_secondary_to_an_explicit_sort`** (prose, because it needs an edge snapshot to produce a depth≥1 item — do not hand-guess the edge direction). It proves stale-first is a SECONDARY tiebreak, not a primary override. Construct it by **mirroring an existing test that produces downstream/affected items** (grep: `grep -rln "capture_snapshot_atomic\|\"depth\": 1\|depth=1\|downstream" tests/`) — copy that test's exact edge-snapshot setup. Make the changed entity X **fresh** (verify at its change commit) and its downstream entity Y at depth 1 **stale** (Y changes again after the last covering verification). Then with the default sort assert: (a) `[it["depth"] for it in env["data"]["items"]] == sorted(...)` — depth stays the PRIMARY ordering; (b) the depth-0 fresh item precedes the depth-1 stale item — stale-first did NOT override the primary key; (c) where two items share a depth, the stale one precedes the fresh one. If a swapped placement (presort after `apply_sort`) were used, (a)/(b) would fail. This is the test that makes the placement fix non-vacuous.
+
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_reverify_verification.py -v`
-Expected: FAIL — items have no `verification` key; `data` has no `verification_summary`.
+Expected: FAIL — items have no `verification` key; `data` has no `verification_summary`. (Note: `test_unavailable_when_reachability_fails` red-states as `AttributeError: module 'warpline.commands' has no attribute 'is_ancestor'` until Step 4 adds the `from warpline.git import is_ancestor, commits_between` import — that import form is REQUIRED for `monkeypatch.setattr(commands, "is_ancestor", ...)` to bind. Guard any `next(... for ... if ...)` in these tests with a preceding `assert any(...)` so a truncated worklist fails with a clear message, not `StopIteration`.)
 
 - [ ] **Step 3: Thread the per-item block through `render_reverify_worklist`**
 
@@ -1672,9 +1801,21 @@ Insert before the `render_reverify_worklist(...)` call:
         for ce in store.list_change_events_for_key_ids(repo, worklist_key_ids):
             kid = ce.get("entity_key_id")
             if isinstance(kid, int):
-                changes_by_key.setdefault(kid, []).append(str(ce.get("commit_sha")))
+                sha = str(ce.get("commit_sha"))
+                bucket = changes_by_key.setdefault(kid, [])
+                # One entity can have several change_event rows for the SAME commit
+                # (the UNIQUE key is (repo, entity_key_id, commit_sha, path, change_kind),
+                # not commit_sha alone). Collapse adjacent duplicates (rows are
+                # oldest-first) so the covers() fan-out isn't wasted and
+                # entity_change_commits[-1] stays the true latest distinct commit.
+                if not bucket or bucket[-1] != sha:
+                    bucket.append(sha)
 
         def _covers(verified_commit: str, change_commit: str) -> bool | None:
+            # NOTE the argument inversion: a change is COVERED by a verification
+            # iff the change commit is an ancestor-or-equal of the verified commit
+            # (the gate ran at/after the change). So covers(verified, change) maps
+            # to is_ancestor(ancestor=change_commit, descendant=verified_commit).
             return is_ancestor(repo, change_commit, verified_commit)
 
         def _between(ancestor: str, descendant: str) -> int | None:
@@ -1712,20 +1853,25 @@ Change the `render_reverify_worklist(...)` call (currently `commands.py:780-786`
         )
 ```
 
-Immediately AFTER that call (items still in render/depth order, before `apply_filters`/`apply_sort`), add the advisory stale-first **stable** presort:
+The render call attaches `item["verification"]` to every item but does NOT reorder them. The advisory stale-first presort goes **between the existing `apply_filters` (`commands.py:787`) and `apply_sort` (`commands.py:788`) calls** — NOT right after render. Pipeline order must be: `render` (780) → `apply_filters` (787) → **`[stale-first presort]`** → `apply_sort` (788) → **`[verification_summary]`** → `apply_group_by` → `apply_overflow` (820) → `apply_page` (823).
+
+Why exactly there (verified: `apply_sort` is Python's stable `sorted()` at `listing.py:332`, with a `sort_by=None` passthrough at `listing.py:306`): the LAST stable sort applied is the PRIMARY key. So the presort must run immediately *before* `apply_sort` — then `apply_sort` is primary and stale-first survives only as the secondary tiebreak within equal primary-key groups (and, when `sort_by` is None, the passthrough leaves the presort order intact). Placing it before `apply_filters` would (a) waste work sorting items filters then drop and (b) be a no-op once `apply_sort` re-sorts. Insert between the two existing statements:
 
 ```python
-        # Advisory: surface stale-of-trust first. This is a SECONDARY tiebreak —
-        # a stable presort beneath the primary ordering. The subsequent
-        # apply_sort (stable, depth by default or the caller's sort_by) keeps its
-        # key primary, so this never reorders across the primary key and NEVER
-        # removes an item. It yields to an explicit sort_by (which becomes
-        # primary); stale-first then orders ties within that.
+        items = apply_filters(items, tool="warpline_reverify_worklist_get", filters=filters)
+        # Advisory: stale-of-trust first. Stable presort run JUST BEFORE apply_sort
+        # so apply_sort stays the PRIMARY key (last stable sort wins) and stale-first
+        # is the secondary tiebreak within ties. Never reorders across the primary
+        # key; never removes an item. Relies on apply_sort being a stable sorted()
+        # (listing.py:332) with a sort_by=None passthrough (listing.py:306).
         _state_rank = {"stale": 0, "unavailable": 1, "unverified": 2, "fresh": 3}
         items.sort(key=lambda it: _state_rank.get(it["verification"]["state"], 3))
+        items = apply_sort(items, tool="warpline_reverify_worklist_get", sort_by=sort_by, sort_order=sort_order)
 ```
 
-**Then `apply_filters` and `apply_sort` run (existing lines `commands.py:787-788`).** The `verification_summary` MUST be computed from the **post-filter, post-sort, pre-page** item set — so a caller who filtered to one `path_prefix` gets counts for *their* scope, not the whole blast radius. The existing pipeline order is `apply_filters` (787) → `apply_sort` (788) → `apply_overflow` (820) → `apply_page` (823). Insert the summary computation **after `apply_sort` (788) and before `apply_overflow` (820)**, holding it in a variable for the `data` dict (which is built later, after paging):
+(The `apply_filters`/`apply_sort` lines above are the EXISTING `commands.py:787-788` statements shown for context — insert only the three presort lines between them; match the real call signatures already in the file.)
+
+Then compute `verification_summary` from the **post-filter, post-sort, pre-page** item set (so a caller who filtered to one `path_prefix` gets counts for *their* scope, not the whole blast radius). Insert it **after `apply_sort` (788) and before `apply_overflow` (820)**, holding it in a variable for the `data` dict (built later, after paging):
 
 ```python
         # verification_summary reflects the post-filter, pre-page set (mirrors how
@@ -1756,7 +1902,7 @@ Then add `verification_summary` to the `data = { ... }` dict (~`commands.py:824-
 - [ ] **Step 5: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_reverify_verification.py -v`
-Expected: PASS (9 tests).
+Expected: PASS (13 tests, incl. the mirrored mixed-depth secondary-sort test).
 
 - [ ] **Step 6: Run the full reverify + envelope suite**
 
@@ -1838,8 +1984,13 @@ def test_gv_vf_1_reverify_verification_freshness_is_explained(tmp_path: Path) ->
     assert fresh_item["verification"]["state"] == "fresh"
     assert fresh_item["verification"]["last_verified_commit"] == head
 
-    # (c) never-filter: same item count before/after verification.
+    # (c) never-filter is an IDENTITY invariant, not just cardinality: the exact
+    # SET of entities is unchanged by recording verification (count-equality alone
+    # would pass a buggy impl that drops one item and re-adds a different one).
     assert len(env2["data"]["items"]) == n_items
+    before_locators = {i["entity"]["locator"] for i in env["data"]["items"]}
+    after_locators = {i["entity"]["locator"] for i in env2["data"]["items"]}
+    assert after_locators == before_locators
     # Honesty meta preserved.
     assert env2["meta"]["local_only"] is True
     assert env2["meta"]["peer_side_effects"] == []
@@ -1984,7 +2135,17 @@ Expected: exits 0 (clean tree, member-diffs, spike, dogfood, productization, ruf
 - MEDIUM — wrong error code for blank `kind` → `MissingRequiredFieldError` (Task 4 Step 3). O(N) full-table scan → `list_change_events_for_key_ids` (Tasks 1 + 5). Advisory-sort/sort_by interaction → documented as secondary tiebreak + stale-before-fresh test (Task 5). `verified_at` lexical-sort bug → `datetime()`-normalized ORDER BY + offset test (Task 1). Missing `unavailable` integration + idempotency-across-timestamps coverage → added (Tasks 4 + 5).
 - LOW — reuse `_now()` (Task 4); CLI error-path test (Task 4); reconcile spec accessor names (spec updated); document `enrich_blast` order invariant (Task 5 Step 3).
 
+**Plan-review v2 (re-review, 2026-06-25) — 0 blockers; all 4 HIGH + 5 MEDIUM resolved:**
+- HIGH — advisory-presort placement → pinned BETWEEN `apply_filters` (787) and `apply_sort` (788) so `apply_sort` stays primary (Task 5 Step 4).
+- HIGH — stale-before-fresh test could pass vacuously → added `test_stale_first_is_secondary_to_an_explicit_sort` (mixed-depth, depth-primary; mirrors existing downstream setup) (Task 5).
+- HIGH — post-filter summary test only covered the zero case → added `test_verification_summary_counts_only_filtered_subset` (2 entities, asserts count == 1) (Task 5).
+- HIGH — `list_change_events_for_key_ids` oldest-first ordering unasserted → added `test_list_change_events_for_key_ids_is_oldest_first` (Task 1).
+- MEDIUM — Step 6b under-specified → now names every stale-v3 site (lines 45-46, 48, 131, 166-175) (Task 1). Duplicate per-entity SHAs → adjacent-dedup in `changes_by_key` (Task 5). `covers`/`is_ancestor` arg-order → documented at `_covers` + `test_fresh_when_verified_at_a_later_commit` (asymmetric, catches a swap). Partial-unavailable gap → `test_unavailable_when_latest_undetermined_even_if_earlier_covered` (Task 3). Squash/rebase + detached-HEAD → `test_unavailable_when_change_commit_no_longer_exists` (Task 5) + `test_verify_record_in_detached_head` (Task 4).
+- LOW — idempotency now via `record_verification_event -> bool` (O(1), race-free) (Task 1/4); GV-VF-1 never-filter strengthened to set-identity (Task 6); `test_mcp_module_imports` smoke test first (Task 4); monkeypatch import-order + `next()`-guard notes (Task 5 Step 2); stale-path `[:-1]` micro-opt (Task 3).
+
+Confirmed by the v2 panel against source: the v1 blocker fixes are all correct (`test_store_migrations.py:48` really pins `==3`; `MissingRequiredFieldError` at `errors.py:70-73`; `_HANDLER_CONSUMES`/`_KNOWN_FASTFOLLOW_DEAD` both exist; `has_sei` filter valid at `listing.py:271-272`; `apply_sort` stable at `listing.py:332` with `sort_by=None` passthrough at `listing.py:306`). No frozen-contract violations; verification never enters the 6-key vocab.
+
 **Residual confirm-points (LOW, the implementer verifies against source — not blocking):**
-1. The exact `filters=` dict shape for the post-filter test (Task 5; `has_sei` key verified by reviewer, shape to confirm from an existing reverify filter test).
+1. The exact `filters=` dict shape for the post-filter tests (Task 5; `has_sei` key verified, shape to confirm from an existing reverify filter test).
 2. The `mcp-tool-inventory.json` regeneration mechanism (script vs hand-edit) — Task 4 Step 5b.
-3. Whether `test_store_migrations.py` enumerates expected tables/versions beyond the version pin — Task 1 Step 6b.
+3. The downstream/affected-item edge-snapshot setup to mirror for `test_stale_first_is_secondary_to_an_explicit_sort` — Task 5 (grep existing tests for `capture_snapshot_atomic`).
