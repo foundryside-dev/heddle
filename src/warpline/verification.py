@@ -2,8 +2,9 @@
 
 Mirrors ``_enrichment.py``: enrich-only, no store, no git, no I/O — git
 reachability is injected as the ``covers`` / ``commits_between`` callables. The
-import list (``typing`` + ``warpline.listing.reason``) is the structural proof
-that this module cannot gate, mirror a sibling, or perform I/O.
+import list (``collections.abc`` + ``typing`` + ``warpline.listing.reason``) is
+the structural proof that this module cannot gate, mirror a sibling, or perform
+I/O.
 
 Freshness asks: has the entity's LATEST change been proven good by a recorded
 gate run? A gate run at commit ``V`` "covers" a change at commit ``C`` iff ``C``

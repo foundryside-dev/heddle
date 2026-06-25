@@ -47,6 +47,7 @@ def test_stale_when_only_earlier_change_covered() -> None:
     )
     assert out["state"] == "stale"
     assert out["last_verified_commit"] == "V1"
+    assert out["last_verified_at"] == "2026-06-25T10:00:00+00:00"
     assert out["decay"]["commits_behind"] == 2
     assert out["reason"]["reason_class"] == "stale"
     assert out["reason"]["cause"] and out["reason"]["fix"]
@@ -113,3 +114,22 @@ def test_unavailable_when_latest_undetermined_even_if_earlier_covered() -> None:
     out = compose_verification_freshness(["C0", "C1"], events, covers, _between_const(0))
     assert out["state"] == "unavailable"
     assert out["reason"]["reason_class"] == "unreachable"
+    assert out["last_verified_at"] is None
+    assert out["decay"]["commits_behind"] is None
+
+
+def test_unavailable_when_earlier_change_undetermined() -> None:
+    # Fail-soft on the EARLIER branch: latest change is definitively uncovered,
+    # but an earlier change's coverage is undetermined — never claim 'unverified'
+    # (an earned clean-empty) when git could not decide.
+    events = [{"commit_sha": "V1", "verified_at": "2026-06-25T10:00:00+00:00"}]
+
+    def covers(verified: str, change: str) -> bool | None:
+        if change == "C1":   # latest: definitively NOT covered
+            return False
+        return None          # earlier change: undetermined
+
+    out = compose_verification_freshness(["C0", "C1"], events, covers, _between_const(0))
+    assert out["state"] == "unavailable"
+    assert out["reason"]["reason_class"] == "unreachable"
+    assert out["last_verified_commit"] is None
