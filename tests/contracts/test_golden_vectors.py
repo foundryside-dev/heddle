@@ -1,4 +1,4 @@
-"""The 18 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
+"""The 19 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
 
 These are warpline's contribution as the 5th producer to the four-member
 conformance oracle (GS-7). Each test is one frozen (input → output assertion)
@@ -534,6 +534,9 @@ def test_gv_vf_1_reverify_verification_freshness_is_explained(tmp_path: Path) ->
     # (d) verification is NOT in the frozen enrichment vocab.
     assert "verification" not in env["enrichment"]
     assert "verification" not in env["enrichment_reasons"]
+    # Honesty meta preserved on the pre-verify envelope too.
+    assert env["meta"]["local_only"] is True
+    assert env["meta"]["peer_side_effects"] == []
 
     # (b) record a gate pass at HEAD -> fresh.
     commands.verify_record(repo, commit=head, kind="test_pass", now="2026-06-25T10:00:00+00:00")
