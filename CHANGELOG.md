@@ -8,6 +8,22 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [Unreleased]
+
+### Added
+- **Verification freshness (Rung 2, Track B).** The reverify worklist now carries
+  an advisory per-item `verification` block (`fresh` / `stale` / `unverified` /
+  `unavailable`) with a trust-decay signal, plus a `verification_summary` rollup —
+  answering "what changed since it was last proven good." Sourced from warpline's
+  own gate result via a new mutating verb `verify-record` (CLI) /
+  `warpline_verification_record` (MCP), the 2nd local-only mutating tool. Advisory
+  and enrich-only: it annotates and re-sorts (stale-of-trust first) but NEVER
+  filters an item, and NEVER gates. Sibling-sourced verification (wardline/
+  filigree/legis) remains honest-absent RESERVED. New schema v4
+  (`verification_events`); golden vector `GV-VF-1`. The frozen `warpline.<contract>.v1`
+  envelope and the closed 6-key enrichment vocab are untouched (verification rides
+  the reverify-item schema, not the enrichment vocab).
+
 ## [1.2.0] - 2026-06-24
 
 Minor release: spine hardening. Snapshot capture is now correct-by-construction and
