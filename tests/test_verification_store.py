@@ -183,3 +183,22 @@ def test_list_change_events_for_key_ids_is_oldest_first(tmp_path: Path) -> None:
         )
         rows = store.list_change_events_for_key_ids(tmp_path, [k])
         assert [r["commit_sha"] for r in rows] == ["1" * 40, "2" * 40]  # oldest-first
+
+
+def test_list_change_events_for_key_ids_deduplicates_input(tmp_path: Path) -> None:
+    # Regression: building the IN-clause from raw key_ids but binding deduped
+    # unique_ids raises sqlite3.ProgrammingError (wrong binding count) whenever
+    # the caller passes duplicates. This ensures the fix is correct.
+    with _open(tmp_path) as store:
+        repo_id = store.ensure_repo(tmp_path)
+        k = store.ensure_entity_key(repo_id, "python:function:m.py::f", None, "1" * 40)
+        other = store.ensure_entity_key(repo_id, "python:function:m.py::g", None, "2" * 40)
+        for kid, sha in ((k, "1" * 40), (other, "2" * 40)):
+            store.append_change_event(
+                repo_id=repo_id, entity_key_id=kid, commit_sha=sha, path="m.py",
+                change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
+            )
+        # Pass k twice (duplicate) — must not raise ProgrammingError.
+        rows = store.list_change_events_for_key_ids(tmp_path, [k, k, other])
+        assert rows  # returns results
+        assert {r["entity_key_id"] for r in rows} == {k, other}

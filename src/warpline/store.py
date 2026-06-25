@@ -328,7 +328,7 @@ def _schema_presence_floor(conn: sqlite3.Connection, claimed: int) -> int:
 
     - Every checkable (≤ HIGHEST_KNOWN) object is present → the marker is TRUSTED
       and ``claimed`` is returned UNCHANGED. A genuinely-newer DB (``claimed`` >
-      HIGHEST_KNOWN whose extra v(N>3) objects we cannot enumerate) keeps its
+      HIGHEST_KNOWN whose extra v(N>4) objects we cannot enumerate) keeps its
       ahead marker so the ``> HIGHEST_KNOWN`` branch still fires SCHEMA_VERSION_AHEAD.
     - ``claimed`` below a check simply skips that check.
 
@@ -1110,7 +1110,8 @@ class WarplineStore:
         if not key_ids:
             return []
         repo_id = self._repo_id(repo)
-        placeholders = ",".join("?" for _ in key_ids)
+        unique_ids = sorted(set(key_ids))
+        placeholders = ",".join("?" for _ in unique_ids)
         rows = self.conn.execute(
             f"""
             SELECT ce.commit_sha, ce.changed_at, ce.entity_key_id
@@ -1119,7 +1120,7 @@ class WarplineStore:
                AND ce.entity_key_id IN ({placeholders})
              ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
             """,
-            (repo_id, *sorted(set(key_ids))),
+            (repo_id, *unique_ids),
         ).fetchall()
         return [dict(row) for row in rows]
 

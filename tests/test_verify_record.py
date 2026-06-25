@@ -135,6 +135,17 @@ def test_verify_record_empty_kind_raises_structured_error(tmp_path: Path) -> Non
     assert data["rejected_field"] == "kind"
 
 
+def test_verify_record_empty_commit_raises_missing_required_field(tmp_path: Path) -> None:
+    # An absent/empty commit must raise MissingRequiredFieldError (missing_required_field),
+    # NOT BadRevisionError (invalid_rev_range) — symmetric with the blank-kind guard.
+    repo, _ = _git_repo(tmp_path)
+    with pytest.raises(WarplineError) as exc:
+        commands.verify_record(repo, commit="", kind="test_pass")
+    data = exc.value.to_error_data()
+    assert data["error_code"] == "missing_required_field"
+    assert data["rejected_field"] == "commit"
+
+
 def test_mcp_lists_verification_record_tool_with_mutating_metadata() -> None:
     from warpline import mcp
 

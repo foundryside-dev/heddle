@@ -1264,6 +1264,11 @@ def verify_record(
             "kind must be a non-empty verification label, e.g. test_pass",
             rejected_field="kind",
         )
+    if not commit or not commit.strip():
+        raise MissingRequiredFieldError(
+            "commit must be a non-empty ref or SHA",
+            rejected_field="commit",
+        )
     resolved = resolve_commit(repo, commit)
     if resolved is None:
         raise BadRevisionError(

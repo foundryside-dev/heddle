@@ -133,3 +133,20 @@ def test_unavailable_when_earlier_change_undetermined() -> None:
     assert out["state"] == "unavailable"
     assert out["reason"]["reason_class"] == "unreachable"
     assert out["last_verified_commit"] is None
+
+
+def test_fresh_when_one_event_covers_latest_and_another_is_undetermined() -> None:
+    # Precedence: a MIXED covers() result on the LATEST change (one event returns
+    # None/undetermined, another returns True) must yield 'fresh' — a positive
+    # cover wins; the None is irrelevant once a True exists.
+    events = [
+        {"commit_sha": "V1", "verified_at": "2026-06-25T09:00:00+00:00"},
+        {"commit_sha": "V2", "verified_at": "2026-06-25T11:00:00+00:00"},
+    ]
+
+    def covers(verified: str, change: str) -> bool | None:
+        return None if verified == "V1" else True  # V1 undetermined, V2 covers
+
+    out = compose_verification_freshness(["C1"], events, covers, _between_const(0))
+    assert out["state"] == "fresh"
+    assert out["last_verified_commit"] == "V2"
