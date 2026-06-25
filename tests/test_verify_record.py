@@ -131,6 +131,7 @@ def test_verify_record_empty_kind_raises_structured_error(tmp_path: Path) -> Non
     with pytest.raises(WarplineError) as exc:
         commands.verify_record(repo, commit="HEAD", kind="   ")
     data = exc.value.to_error_data()
+    assert data["error_code"] == "missing_required_field"
     assert data["rejected_field"] == "kind"
 
 

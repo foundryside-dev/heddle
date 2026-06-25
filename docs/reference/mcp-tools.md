@@ -406,4 +406,6 @@ Advisory; warpline never gates. Idempotent on `(repo, commit, kind, source=warpl
 
 `idempotency: already_recorded` means the row already existed (a second call for
 the same `(repo, commit, kind)` tuple is a no-op — exactly one row is stored).
-All enrichment keys are `absent` (no graph-layer dependency).
+All enrichment keys are at their default state (`sei: absent`, `edges: absent`,
+`work: unavailable`, `risk: unavailable`, `governance: unavailable`,
+`requirements: unavailable`) — no graph-layer dependency.
