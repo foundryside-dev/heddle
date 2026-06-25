@@ -86,6 +86,12 @@ def build_envelope(
                 f"enrichment_reasons.{dim} must be a listing.reason() triple "
                 f"(a dict carrying a canonical reason_class)"
             )
+        if carrier["reason_class"] != "clean" and not (carrier.get("cause") and carrier.get("fix")):
+            raise ValueError(
+                f"enrichment_reasons.{dim} is a non-clean reason_class "
+                f"({carrier['reason_class']!r}) but is missing cause and/or fix "
+                f"(the unexplained-absence the honesty doctrine forbids)"
+            )
     return {
         "schema": schema,
         "ok": True,

@@ -34,7 +34,7 @@ def _assert_frozen_envelope(fixture: dict[str, object]) -> None:
     assert set(enrichment) == set(ENRICHMENT_VOCAB)
     for key, value in enrichment.items():
         assert value in ENRICHMENT_VOCAB[key]
-    # enrichment_reasons mirrors build_envelope's contract (envelope.py:78-88):
+    # enrichment_reasons mirrors build_envelope's contract (envelope.py:78-94):
     # every dimension is in the closed vocab and every value is a listing.reason()
     # triple (a canonical reason_class; non-clean carries both cause and fix). The
     # reserved-but-honest `requirements` triple rides on EVERY frozen envelope and

@@ -311,7 +311,6 @@ def change_list(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_CHANGE_LIST,
             query=query,
@@ -400,7 +399,6 @@ def entity_timeline(
         }
         sei_state = "present" if entity_out["sei"] else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         if rename_feed is not None:
             governance_reason = reason("clean")
         else:
@@ -504,7 +502,6 @@ def entity_churn_count(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_ENTITY_CHURN_COUNT,
             query=query,
@@ -1234,7 +1231,6 @@ def capture_snapshot(
             "page": {"limit": None, "cursor": None},
         }
         capture_sei_triple = sei_reason(sei_state)
-        assert capture_sei_triple is not None  # unavailable/absent are always in-vocab
         return build_envelope(
             SCHEMA_EDGE_SNAPSHOT,
             query=query,

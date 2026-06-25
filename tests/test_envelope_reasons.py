@@ -53,3 +53,8 @@ def test_envelope_rejects_reason_value_without_reason_class() -> None:
 def test_clean_reason_needs_no_cause_or_fix() -> None:
     env = _minimal_env(enrichment_reasons={"sei": reason("clean")})
     assert env["enrichment_reasons"]["sei"] == {"reason_class": "clean"}
+
+
+def test_envelope_rejects_hollow_non_clean_triple() -> None:
+    with pytest.raises(ValueError):
+        _minimal_env(enrichment_reasons={"sei": {"reason_class": "disabled"}})

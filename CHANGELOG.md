@@ -24,6 +24,20 @@ is a new contract URI, never a mutation of `v1`.
   envelope and the closed 6-key enrichment vocab are untouched (verification rides
   the reverify-item schema, not the enrichment vocab).
 
+### Fixed
+- **Weft-reason honesty invariant now survives `python -O`.** `listing.reason()`
+  enforced its carrier rule (class-membership, and "every non-clean carrier MUST
+  carry both cause and fix") with bare `assert`s, which `-O` strips — so under
+  `-O` a hollow `{reason_class: "disabled"}` triple with no cause/fix could ship,
+  the exact unexplained-absence the honesty doctrine forbids. Promoted both checks
+  to raised `ValueError`, and hardened `build_envelope` to reject a non-clean
+  `enrichment_reasons` triple missing cause/fix (closing the parallel
+  hand-built-via-kwarg path, which bypassed `reason()` even without `-O`).
+  `sei_reason()` is now non-Optional — it raises on an out-of-vocab state, which
+  removed four `-O`-strippable narrowing asserts at its call sites. Internal
+  hardening only; the frozen `warpline.<contract>.v1` envelope and the closed
+  enrichment vocab are unchanged.
+
 ## [1.2.0] - 2026-06-24
 
 Minor release: spine hardening. Snapshot capture is now correct-by-construction and
