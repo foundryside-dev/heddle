@@ -11,6 +11,28 @@ is a new contract URI, never a mutation of `v1`.
 ## [Unreleased]
 
 ### Added
+- **Impact-completeness self-assessment (federation D1).** The reverify worklist
+  now carries an additive `data.impact_completeness` object —
+  `{status: complete|partial|unknown, as_of, graph_fresh, graph_ref, depth_capped,
+  unresolved_count, reasons[]}` — warpline's honest verdict on whether the impact
+  set is exhaustive for the change. One object declares BOTH axes: the staleness
+  axis (`as_of` producer timestamp + `graph_fresh` + `graph_ref`) and the
+  completeness axis (`status` + `depth_capped` + `unresolved_count`).
+  `status="complete"` is emitted ONLY when the graph is positively fresh (FULL,
+  `commits_behind==0`), the blast traversal hit no depth cap, and zero changed
+  entities were unresolved; any gap → `partial`; no graph at all → `unknown`.
+  Never `complete` on a guess. A new `depth_capped` signal in the blast traversal
+  honestly reports when a depth-bounded scope left reachable impact unexplored.
+  This is the field downstream consumers (wardline mirrors it verbatim into
+  `producer_completeness`) rely on to NOT treat a narrowed scope as authoritative.
+  Published as a drift-checkable contract artifact at
+  `contracts/reverify_worklist.v1.schema.json` (JSON Schema, draft 2020-12), which
+  validates real worklist output. Consumer side (risk-as-verification): an absent
+  or non-`complete` assessment degrades warpline's own risk path to
+  `risk=unavailable` with an explicit reason (`completeness_not_declared` /
+  `completeness_partial`) — never `clean`. Additive on `.v1`: the FROZEN raw
+  snapshot-completeness `data.completeness` STRING enum is unchanged (raw signal
+  vs. derived assessment); no `v2` bump.
 - **Verification freshness (Rung 2, Track B).** The reverify worklist now carries
   an advisory per-item `verification` block (`fresh` / `stale` / `unverified` /
   `unavailable`) with a trust-decay signal, plus a `verification_summary` rollup —

@@ -11,6 +11,15 @@
   },
   "data": {
     "completeness": "NO_SNAPSHOT",
+    "impact_completeness": {
+      "status": "unknown",
+      "as_of": "2026-01-01T00:00:00+00:00",
+      "graph_fresh": false,
+      "graph_ref": null,
+      "depth_capped": false,
+      "unresolved_count": 0,
+      "reasons": ["no_snapshot"]
+    },
     "staleness": {"snapshot_commit": null, "commits_behind": null},
     "resolved": [
       {

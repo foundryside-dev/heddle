@@ -48,6 +48,7 @@ def blast_radius(
             "affected": [],
             "staleness": {"snapshot_commit": None, "commits_behind": None},
             "completeness": "NO_SNAPSHOT",
+            "depth_capped": False,
         }
 
     adjacency: dict[int, list[dict[str, Any]]] = {}
@@ -57,12 +58,23 @@ def blast_radius(
 
     seen = set(changed_entity_key_ids)
     affected: list[dict[str, Any]] = []
+    # depth_capped: did the bounded traversal leave reachable impact unexplored? A
+    # node at the depth horizon (current_depth >= depth) that still has an out-edge
+    # to an as-yet-unseen target means the affected set is truncated, NOT exhaustive.
+    # This is the honest signal the impact-completeness assessment needs — without
+    # it a narrowed depth-bounded scope reads as a complete one.
+    depth_capped = False
     queue: deque[tuple[int, int, list[dict[str, Any]]]] = deque(
         (key_id, 0, []) for key_id in changed_entity_key_ids
     )
     while queue:
         current, current_depth, path = queue.popleft()
         if current_depth >= depth:
+            if not depth_capped:
+                for edge in adjacency.get(current, []):
+                    if _as_int(edge["target_entity_key_id"]) not in seen:
+                        depth_capped = True
+                        break
             continue
         for edge in adjacency.get(current, []):
             target = _as_int(edge["target_entity_key_id"])
@@ -89,4 +101,5 @@ def blast_radius(
             "commits_behind": _commits_behind(repo, str(snapshot["commit_sha"])),
         },
         "completeness": snapshot["completeness"],
+        "depth_capped": depth_capped,
     }

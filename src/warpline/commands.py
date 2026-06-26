@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from warpline._blast import enrich_blast, resolve_changed_inputs, rev_range_commits
+from warpline._completeness import compute_impact_completeness
 from warpline._enrichment import (
     EDGES_FOR_COMPLETENESS,
     completeness_warnings,
@@ -908,8 +909,23 @@ def reverify_worklist(
             items, repo=repo, tool="warpline_reverify_worklist_get", schema=SCHEMA_REVERIFY_WORKLIST
         )
         items, page = apply_page(items, limit=limit, cursor=cursor)
+        # Federation D1: the self-assessed completeness+staleness of THIS impact
+        # analysis (additive v1 OBJECT, distinct from the FROZEN raw-snapshot
+        # `completeness` STRING above). wardline mirrors this single object verbatim
+        # into its own `producer_completeness` scope-honesty field. Both axes live
+        # inside it: the staleness axis (`as_of` producer timestamp + graph_fresh +
+        # graph_ref) and the completeness axis (status + depth_capped +
+        # unresolved_count). warpline's raw `staleness`/`completeness` are untouched.
+        impact_completeness = compute_impact_completeness(
+            as_of=_now().isoformat(),
+            completeness=completeness,
+            staleness=staleness,
+            unresolved=unresolved,
+            depth_capped=bool(result.get("depth_capped", False)),
+        )
         data = {
             "completeness": completeness,
+            "impact_completeness": impact_completeness,
             "staleness": staleness,
             "verification_summary": verification_summary,
             "resolved": resolved,

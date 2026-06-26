@@ -113,7 +113,30 @@ def test_reverify_response_fixture_carries_honesty_fields() -> None:
     _assert_frozen_envelope(fixture)
     data = fixture["data"]
     assert isinstance(data, dict)
+    # FROZEN raw snapshot-completeness STRING (unchanged on v1).
     assert data["completeness"] in {"FULL", "DELTA", "NO_SNAPSHOT", "SKIPPED"}
+    # Federation D1 (additive v1): the derived impact-completeness OBJECT wardline
+    # mirrors verbatim into producer_completeness, plus the producer timestamp.
+    impact = data["impact_completeness"]
+    assert isinstance(impact, dict)
+    assert set(impact) == {
+        "status",
+        "as_of",
+        "graph_fresh",
+        "graph_ref",
+        "depth_capped",
+        "unresolved_count",
+        "reasons",
+    }
+    assert impact["status"] in {"complete", "partial", "unknown"}
+    assert isinstance(impact["as_of"], str)
+    assert isinstance(impact["graph_fresh"], bool)
+    assert isinstance(impact["depth_capped"], bool)
+    assert isinstance(impact["unresolved_count"], int)
+    assert isinstance(impact["reasons"], list)
+    # The producer timestamp (staleness axis) lives inside impact_completeness; the
+    # redundant top-level data.generated_at was removed (federation reads one object).
+    assert "generated_at" not in data
     assert "staleness" in data
     assert "items" in data
     # PDR-0023: the resolve join is interrogable — every changed ref lands in

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.dev/contracts/warpline/reverify_worklist.v1.schema.json",
+  "title": "warpline.reverify_worklist.v1",
+  "description": "Published contract for the warpline reverify worklist envelope. This is the drift-checkable artifact the Weft federation gate (wardline) validates its vendored fixtures against. warpline emits this payload; wardline consumes it as a PUSHED, UNTRUSTED producer claim and never gates on it. The contract is additive within v1: any incompatible change MUST bump to .v2. Fields beyond those constrained here are permitted (additionalProperties: true) so warpline may enrich the envelope without breaking consumers; the federation-relevant fields (entity.{locator,sei}, generated_at, impact_completeness) are pinned.",
+  "type": "object",
+  "required": [
+    "schema",
+    "ok",
+    "query",
+    "data",
+    "warnings",
+    "next_actions",
+    "enrichment",
+    "enrichment_reasons",
+    "meta"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "warpline.reverify_worklist.v1" },
+    "ok": { "type": "boolean" },
+    "query": { "type": "object" },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "next_actions": { "type": "object" },
+    "enrichment": { "type": "object" },
+    "enrichment_reasons": { "type": "object" },
+    "meta": {
+      "type": "object",
+      "required": ["local_only", "peer_side_effects"],
+      "additionalProperties": true,
+      "properties": {
+        "local_only": { "const": true },
+        "peer_side_effects": { "type": "array", "maxItems": 0 }
+      }
+    },
+    "data": { "$ref": "#/$defs/data" }
+  },
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "completeness",
+        "impact_completeness",
+        "staleness",
+        "items",
+        "resolved",
+        "unresolved"
+      ],
+      "properties": {
+        "completeness": {
+          "description": "Raw snapshot edge-completeness enum (a STRING). This is the FROZEN v1 field; the derived self-assessment lives in impact_completeness.",
+          "enum": ["FULL", "DELTA", "NO_SNAPSHOT", "SKIPPED"]
+        },
+        "staleness": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["snapshot_commit", "commits_behind"],
+          "properties": {
+            "snapshot_commit": { "type": ["string", "null"] },
+            "commits_behind": { "type": ["integer", "null"] }
+          }
+        },
+        "impact_completeness": { "$ref": "#/$defs/impact_completeness" },
+        "items": { "type": "array", "items": { "$ref": "#/$defs/item" } },
+        "resolved": { "type": "array" },
+        "unresolved": { "type": "array" }
+      }
+    },
+    "impact_completeness": {
+      "description": "warpline's honest self-assessment of the impact analysis's completeness + staleness, in ONE object. wardline mirrors it VERBATIM into its producer_completeness scope-honesty field. Staleness axis: as_of (producer timestamp) + graph_fresh + graph_ref. Completeness axis: status + depth_capped + unresolved_count. status='complete' ONLY when the impact set is genuinely exhaustive (fresh FULL graph, no depth cap, zero unresolved); 'partial' when any coverage gap is known; 'unknown' when coverage cannot be assessed (no graph). Never 'complete' on a guess.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "as_of",
+        "graph_fresh",
+        "graph_ref",
+        "depth_capped",
+        "unresolved_count",
+        "reasons"
+      ],
+      "properties": {
+        "status": { "enum": ["complete", "partial", "unknown"] },
+        "as_of": {
+          "description": "Producer generation timestamp (RFC3339 / ISO 8601, timezone-qualified) — the staleness axis. wardline echoes this as an unverified staleness proxy. The pattern asserts the shape portably; format is annotation-only under draft 2020-12.",
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "graph_fresh": {
+          "description": "Was the loomweave edge graph positively current vs the working tree (commits_behind == 0)?",
+          "type": "boolean"
+        },
+        "graph_ref": {
+          "description": "The snapshot commit the impact graph was captured at, or null when no graph exists.",
+          "type": ["string", "null"]
+        },
+        "depth_capped": {
+          "description": "Was the blast-radius traversal truncated at the depth/fan-out horizon?",
+          "type": "boolean"
+        },
+        "unresolved_count": {
+          "description": "Count of changed entities that could NOT be mapped to graph nodes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasons": {
+          "description": "Closed machine-code vocabulary explaining a non-complete status.",
+          "type": "array",
+          "items": {
+            "enum": [
+              "graph_stale",
+              "graph_freshness_unknown",
+              "partial_snapshot",
+              "depth_capped",
+              "unresolved_entities",
+              "no_snapshot",
+              "snapshot_skipped"
+            ]
+          }
+        }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["entity"],
+      "properties": {
+        "entity": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["locator", "sei"],
+          "properties": {
+            "locator": { "type": ["string", "null"] },
+            "sei": { "type": ["string", "null"] }
+          }
+        }
+      }
+    }
+  }
+}
