@@ -1,6 +1,6 @@
 # Metrics - Warpline
 
-Last read: 2026-06-24 (checkpoint)
+Last read: 2026-06-26 (checkpoint)
 
 ## North-star
 
@@ -67,6 +67,30 @@ adversarially-verified review (PDR-0006). No reversal trigger crossed.
 - **Install hygiene** — warpline 1.2.0 is the single canonical uv tool; the stale
   pre-rename `heddle` editable venv (which shadowed bare invocations at 1.0.0) was
   retired.
+
+## 2026-06-26 readings — 1.2.0 follow-up burndown
+
+Execution session on the PDR-0006 deferred follow-ups (no bet change; no reversal
+trigger crossed).
+
+- **Tracked quality debt** — 3 of the 4 original 1.2.0 review follow-ups now closed:
+  warpline-d7d04243b2 (prior session), and this session warpline-fc09bdeddd
+  (contract-fixture drift; commit 3f6f652) + warpline-d88e223731 (`reason()`
+  assert→ValueError; commit 7683407). Remaining: warpline-17242c627b (atomic ROLLBACK
+  coverage + precondition guard). New follow-up filed since: warpline-9eae3eb86a
+  (Charter→Plainweave evidence refresh, gated on the plainweave repo).
+- **Authority-boundary / honesty guardrail — strengthened.** The weft-reason carrier
+  invariant (every non-clean reason carries cause+fix — the "unexplained absence" the
+  honesty doctrine forbids) now survives `python -O`: `reason()` and `build_envelope`
+  raise `ValueError` instead of relying on `-O`-strippable `assert`s, and `sei_reason`
+  is non-Optional. Verified by an independent `python -O` proof plus full suite green
+  (5 known env-only `PackageNotFoundError` failures, no 6th); mypy unchanged; ruff clean.
+- **Observation filed** — warpline-obs-da4909ac64: the same bare-`assert`-under-`-O`
+  pattern remains in `mcp.py`'s inputSchema guard (different module; scoped out of
+  d88e223731).
+- **No north-star or input-metric change** — no consumer-facing capability shipped this
+  session; verification-freshness remains built-but-unreleased on
+  `plan/verification-freshness`.
 
 ## Reading notes
 
