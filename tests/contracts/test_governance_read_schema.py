@@ -122,3 +122,37 @@ def test_rejects_unknown_top_level_key() -> None:
     bad = json.loads(json.dumps(CHECKED_EMPTY))
     bad["verdict"] = "allow"  # no verdict leaks through a governance READ
     _rejects(bad)
+
+
+# --- discriminated union (legis hardened the contract; backward-compatible) ----
+# These pin the status<->shape coupling the `allOf` enforces, so warpline's
+# consumer validates with EXACTLY the tightness legis emits — an 'unavailable'
+# that could masquerade as a clean/empty 'checked' is the false-green this kills.
+def test_rejects_checked_carrying_an_unavailable_key() -> None:
+    # status 'checked' MUST NOT carry the unavailable reasons array.
+    _rejects({"status": "checked", "sei": "loomweave:eid:x", "records": [],
+              "unavailable": [{"reason": "leaked"}]})
+
+
+def test_rejects_unavailable_missing_its_reasons() -> None:
+    # status 'unavailable' REQUIRES the unavailable array.
+    _rejects({"status": "unavailable", "sei": "loomweave:eid:x", "records": []})
+
+
+def test_rejects_unavailable_with_empty_reasons() -> None:
+    # the unavailable array must be non-empty (minItems: 1) — never a silent empty.
+    _rejects({"status": "unavailable", "sei": "loomweave:eid:x", "records": [],
+              "unavailable": []})
+
+
+def test_rejects_unavailable_with_a_blank_reason_string() -> None:
+    _rejects({"status": "unavailable", "sei": "loomweave:eid:x", "records": [],
+              "unavailable": [{"reason": ""}]})
+
+
+def test_rejects_unavailable_carrying_records() -> None:
+    # 'unavailable' must carry [] records (maxItems: 0) — no clearance rides an
+    # unverifiable answer.
+    bad = json.loads(json.dumps(UNAVAILABLE))
+    bad["records"] = CHECKED_WITH_CLEARANCES["records"]
+    _rejects(bad)

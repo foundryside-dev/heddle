@@ -15,10 +15,14 @@ is a new contract URI, never a mutation of `v1`.
   --include_federation` now lights up the previously-inert `legis` member with a
   real `LegisGovernanceClient` over the `legis governance-read <SEI> --json` verb,
   consuming legis's authoritative `governance_read.v1` (verified clearances only:
-  operator override / cleared sign-off). Mirrored as the source of truth at
-  `contracts/governance_read.v1.schema.json` (legis OWNS it; warpline echoes
-  advisorily and NEVER gates — `GV-LG-1`, no `governance_verdict` in output). The
-  clearance `content_hash` is echoed verbatim, NOT re-derived against the current
+  operator override / cleared sign-off). Mirrored BYTE-FOR-BYTE as the source of
+  truth at `contracts/governance_read.v1.schema.json` (legis OWNS it; warpline
+  echoes advisorily and NEVER gates — `GV-LG-1`, no `governance_verdict` in
+  output). The mirror tracks legis's hardened discriminated union (`unavailable` ⇒
+  non-empty reasons + empty `records`; `checked` ⇒ no `unavailable` key) — a
+  backward-compatible tightening, pinned by consumer-side rejection tests so an
+  `unavailable` answer can never masquerade as a clean empty.
+  The clearance `content_hash` is echoed verbatim, NOT re-derived against the current
   body (governance is an echo, not a warpline-asserted verdict — contrast the
   attest-2 path). Honesty: an empty read is `governance: absent` = "no verified
   clearance," which deliberately conflates *ungoverned*, *unknown-SEI*, and an
