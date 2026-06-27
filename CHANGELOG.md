@@ -11,6 +11,24 @@ is a new contract URI, never a mutation of `v1`.
 ## [Unreleased]
 
 ### Added
+- **Risk-as-verification: wardline-attest-2 consumer (Rung 2).** Closes the
+  `verification_source_absent` gap D1 left open. warpline now consumes a PUSHED,
+  UNTRUSTED `wardline-attest-2` evidence bundle and, for a worklist whose impact
+  set is genuinely `complete`, reads **proven-good** iff EVERY affected entity is
+  attested clean at its CURRENT body — mechanical `(commit, content_hash)`
+  equality per SEI against the bundle's boundaries (`verdict == "clean"`, not
+  `dirty`, commit pins, content_hash matches loomweave's per-entity body hash).
+  The body hash is sourced from the SAME loomweave `entity_resolve` round trip
+  warpline already uses for the SEI (`resolve_content_hash_for_locator`); it is
+  byte-identical to the value wardline binds into the bundle (verified across
+  loomweave's MCP `entity_resolve` and HTTP `/api/v1/identity/sei` surfaces). The
+  verdict is an **echo of wardline's authority, signature NOT verified by
+  warpline** (`authority: "wardline"`, `signature_verified: false`) — never a
+  warpline-minted clean. Every honesty edge (no bundle, non-attest-2 schema,
+  dirty tree, null/mismatched commit, `sei_source: "unavailable"`, null sei /
+  content_hash, non-clean verdict, ANY unmatched affected entity) degrades to
+  `unavailable` with an explicit machine reason; proven-good is all-or-nothing.
+  Pure consumer (`_attest.worklist_risk`); layered on D1's completeness gate.
 - **Impact-completeness self-assessment (federation D1).** The reverify worklist
   now carries an additive `data.impact_completeness` object —
   `{status: complete|partial|unknown, as_of, graph_fresh, graph_ref, depth_capped,

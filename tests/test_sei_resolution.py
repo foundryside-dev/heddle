@@ -5,6 +5,7 @@ from pathlib import Path
 from warpline.loomweave import (
     loomweave_entity_id_candidates,
     loomweave_resolve_qualnames,
+    resolve_content_hash_for_locator,
     resolve_sei_for_locator,
 )
 from warpline.store import WarplineStore
@@ -51,6 +52,45 @@ def test_resolve_sei_for_locator_returns_opaque_value() -> None:
         resolve_sei_for_locator(FakeClient(), "python:function:pkg/mod.py::fn")
         == "loomweave:eid:opaque-value"
     )
+
+
+class _HashClient:
+    """entity_resolve carrying BOTH sei and content_hash on the candidate — the
+    REAL shape (verified live: candidate.content_hash is loomweave's per-entity
+    body hash, the same value wardline binds into a wardline-attest-2 boundary)."""
+
+    def __init__(self, content_hash: str | None = "42f3670fbeefbeefbeef") -> None:
+        self._chash = content_hash
+
+    def call_tool(self, name: str, arguments: dict[str, object]) -> dict[str, object]:
+        assert name == "entity_resolve"
+        return {
+            "results": [
+                {
+                    "qualname": "pkg.mod.fn",
+                    "result_kind": "resolved",
+                    "candidates": [
+                        {
+                            "id": "python:function:pkg.mod.fn",
+                            "sei": "loomweave:eid:opaque-value",
+                            "content_hash": self._chash,
+                        }
+                    ],
+                }
+            ]
+        }
+
+
+def test_resolve_content_hash_for_locator_reads_loomweave_body_hash() -> None:
+    assert (
+        resolve_content_hash_for_locator(_HashClient(), "python:function:pkg/mod.py::fn")
+        == "42f3670fbeefbeefbeef"
+    )
+
+
+def test_resolve_content_hash_absent_is_none_not_guessed() -> None:
+    client = _HashClient(content_hash=None)
+    assert resolve_content_hash_for_locator(client, "python:function:pkg/mod.py::fn") is None
 
 
 def test_loomweave_entity_id_candidates_translate_python_locators() -> None:
