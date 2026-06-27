@@ -64,7 +64,15 @@ def test_tools_list_contains_changed_and_timeline() -> None:
         assert metadata["peer_side_effects"] == []
         assert isinstance(metadata["idempotent"], bool)
         assert isinstance(metadata["writes_local_state"], bool)
-        assert ".weft/warpline/" in metadata["mutates_paths"]
+        # A tool that writes local state must declare .weft/warpline as its mutate
+        # surface; a GENUINELY read-only tool (the project_status binding probe)
+        # initializes nothing and declares an empty mutate surface. The honest
+        # invariant is the either/or, not a blanket "everything writes".
+        if metadata["writes_local_state"]:
+            assert ".weft/warpline/" in metadata["mutates_paths"]
+        else:
+            assert metadata["read_only"] is True
+            assert metadata["mutates_paths"] == []
 
 
 def test_endorsed_and_shim_return_identical_schema_and_data(tmp_path: Path) -> None:

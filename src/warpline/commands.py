@@ -16,7 +16,12 @@ from warpline._enrichment import (
     staleness_warnings,
 )
 from warpline.envelope import build_envelope, enrichment_state
-from warpline.errors import BadRevisionError, InvalidChangedRefsError, MissingRequiredFieldError
+from warpline.errors import (
+    BadRevisionError,
+    InternalError,
+    InvalidChangedRefsError,
+    MissingRequiredFieldError,
+)
 from warpline.federation import LegisClient, RiskClient, consult_federation
 from warpline.git import commits_between, is_ancestor, resolve_commit
 from warpline.listing import (
@@ -43,7 +48,12 @@ from warpline.refs import (
 from warpline.reverify import render_reverify_worklist
 from warpline.siblings import RenameFeed, WorkClient
 from warpline.snapshot import capture_edge_snapshot
-from warpline.store import WarplineStore, default_store_path
+from warpline.store import (
+    STORE_STATUS_VOCAB,
+    WarplineStore,
+    default_store_path,
+    read_store_binding,
+)
 from warpline.verification import compose_verification_freshness
 
 # FROZEN schema URIs (one contract per tool; endorsed name and shim share it).
@@ -54,6 +64,7 @@ SCHEMA_IMPACT_RADIUS = "warpline.impact_radius.v1"
 SCHEMA_REVERIFY_WORKLIST = "warpline.reverify_worklist.v1"
 SCHEMA_EDGE_SNAPSHOT = "warpline.edge_snapshot.v1"
 SCHEMA_VERIFICATION_RECORD = "warpline.verification_record.v1"
+SCHEMA_PROJECT_STATUS = "warpline.project_status.v1"
 
 
 def session_context(repo: Path) -> str:
@@ -1404,4 +1415,72 @@ def verify_record(
         data=data,
         enrichment=enrichment_state(),
         warnings=[],
+    )
+
+
+# ---------------------------------------------------------------------------
+# warpline_project_status_get — warpline.project_status.v1
+def project_status(repo: Path) -> dict[str, Any]:
+    """Read-only store-binding/health probe — the federation-attachment signal.
+
+    Reports whether THIS warpline build can read and SERVE the snapshot store for
+    ``repo`` (``data.binding_ok``). warpline is repo-per-call — bound to nothing
+    at launch — so this is a *can-service-R* check, never a launch-time binding:
+    given ``repo=R`` the server reads the schema version FROM INSIDE R's snapshot
+    store (``data.store.schema_version``, ``null`` when absent/unreadable), so a
+    stale binary that cannot read its store is caught — unlike mere directory
+    existence, which such a binary would still see.
+
+    Strictly read-only: it creates and migrates no snapshot STATE (unlike every
+    other read tool, which lazily opens — and thus initializes — the store). An
+    absent store reports absent (no DB created) with a ``capture_snapshot``
+    next-action hint, and a present store's ``warpline.db`` is left byte-for-byte
+    unchanged. (Opening a present WAL store read-only may spawn gitignored SQLite
+    ``-wal``/``-shm`` coordination sidecars — not snapshot state.)
+    """
+
+    resolved = repo.resolve()
+    binding = read_store_binding(repo)
+    # Fail closed if the store-read ever yields a status outside the closed vocab
+    # (the same discipline build_envelope applies to the enrichment vocabulary).
+    if binding.status not in STORE_STATUS_VOCAB:
+        raise InternalError(
+            f"store binding produced status {binding.status!r} outside STORE_STATUS_VOCAB"
+        )
+    data: dict[str, Any] = {
+        "resolved_root": str(resolved),
+        "store": {
+            "present": binding.present,
+            "readable": binding.readable,
+            "schema_version": binding.schema_version,
+            "snapshot_rev": binding.snapshot_rev,
+            "change_event_count": binding.change_event_count,
+        },
+        "store_status": binding.status,
+        "binding_ok": binding.binding_ok,
+    }
+    warnings = [] if binding.binding_ok else [binding.detail]
+    next_actions: dict[str, Any] = {}
+    if binding.status == "store_absent":
+        next_actions = {
+            "warpline_edge_snapshot_capture": {
+                "tool": "warpline_edge_snapshot_capture",
+                "arguments": {"repo": str(resolved)},
+            }
+        }
+    query = {
+        "repo": str(resolved),
+        "tool": "warpline_project_status_get",
+        "arguments": {},
+        "filters": {},
+        "sort": {},
+        "page": {"limit": None, "cursor": None},
+    }
+    return build_envelope(
+        SCHEMA_PROJECT_STATUS,
+        query=query,
+        data=data,
+        enrichment=enrichment_state(),
+        next_actions=next_actions,
+        warnings=warnings,
     )

@@ -249,6 +249,159 @@ def default_store_path(repo: Path, base_dir: Path | None = None) -> Path:
     return state / "warpline.db"
 
 
+def store_repo_id(repo: Path) -> str:
+    """Stable per-repo store key (sha256 of the resolved root).
+
+    Single source of truth for the repo_id derivation used by both
+    ``WarplineStore._repo_id`` (the writer path) and ``read_store_binding`` (the
+    read-only probe), so the binding probe scopes its counts to the SAME repo the
+    writer keyed on.
+    """
+
+    return hashlib.sha256(str(repo.resolve()).encode("utf-8")).hexdigest()
+
+
+# Closed vocabulary for ``StoreBinding.status`` — mirrors warpline's other closed
+# vocabularies (enrichment, reason classes): an honest status is one of these,
+# never a free-form string. ``ok`` = present + readable + serveable schema;
+# ``store_absent`` = no DB file; ``store_unreadable`` = corrupt / no meta row /
+# unparseable; ``schema_ahead`` = written by a newer build than this one serves.
+STORE_STATUS_VOCAB = frozenset({"ok", "store_absent", "store_unreadable", "schema_ahead"})
+
+
+class StoreBinding(NamedTuple):
+    """Result of the read-only ``read_store_binding`` probe.
+
+    ``binding_ok`` is the federation-harness verdict: True iff the snapshot store
+    is present, readable, AND at a schema version THIS build can serve. The
+    load-bearing field is ``schema_version`` — READ from inside the store, with a
+    ``None`` sentinel whenever the store is absent, corrupt, or written by a newer
+    build than this binary can read (the stale-binary case). ``status`` is the
+    closed ``STORE_STATUS_VOCAB``.
+    """
+
+    present: bool
+    readable: bool
+    schema_version: int | None
+    snapshot_rev: str | None
+    change_event_count: int | None
+    binding_ok: bool
+    status: str
+    detail: str
+
+
+def _binding_unreadable(detail: str) -> StoreBinding:
+    return StoreBinding(
+        present=True,
+        readable=False,
+        schema_version=None,
+        snapshot_rev=None,
+        change_event_count=None,
+        binding_ok=False,
+        status="store_unreadable",
+        detail=detail,
+    )
+
+
+def read_store_binding(repo: Path, base_dir: Path | None = None) -> StoreBinding:
+    """Read-only binding/health probe for warpline's snapshot store.
+
+    Answers "can THIS warpline build read and SERVE the snapshot store for
+    ``repo``?" — the federation-attachment signal the Lacuna harness asserts on to
+    catch a stale-but-running warpline whose store schema moved out from under the
+    binary. Unlike ``WarplineStore.open`` (which mkdir's, ``executescript``'s the
+    base schema, and runs migrations — *creating* a store on first touch), this
+    NEVER creates or migrates snapshot STATE: an absent store reports absent (no
+    file is created), no rows are written, and the durable ``warpline.db`` is left
+    byte-for-byte unchanged. It opens the DB strictly read-only (``mode=ro``,
+    which also fails fast on a missing file rather than creating one) and reads
+    the schema version, a cheap change-event count, and the latest captured
+    snapshot rev directly.
+
+    Honest caveat: opening a PRESENT WAL-mode store read-only lets SQLite create
+    its transient coordination sidecars (``warpline.db-wal`` / ``-shm``) — these
+    are gitignored, not snapshot state, and ``mode=ro`` (over ``immutable=1``) is
+    deliberate so the probe always reads the latest COMMITTED schema version even
+    if a writer left un-checkpointed WAL frames (the stale-binary signal must not
+    itself read stale).
+    """
+
+    path = default_store_path(repo, base_dir)
+    if not path.is_file():
+        return StoreBinding(
+            present=False,
+            readable=False,
+            schema_version=None,
+            snapshot_rev=None,
+            change_event_count=None,
+            binding_ok=False,
+            status="store_absent",
+            detail=f"no warpline snapshot store at {path}; run capture_snapshot",
+        )
+
+    try:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        return _binding_unreadable(f"could not open snapshot store read-only: {exc}")
+
+    conn.row_factory = sqlite3.Row
+    try:
+        meta_row = conn.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone()
+        user_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        if meta_row is None:
+            return _binding_unreadable("snapshot store has no meta.schema_version row")
+        # The on-disk version is the canonical meta marker, floored by the
+        # PRAGMA user_version so a writer that bumped either signal is detected.
+        on_disk = max(int(meta_row["value"]), user_version)
+        if on_disk > HIGHEST_KNOWN_VERSION:
+            # The stale-binary case: a newer warpline wrote this store at a schema
+            # beyond what this build knows. warpline's own open() keeps reads
+            # "safe when ahead", but the harness question is narrower — "can THIS
+            # build SERVE it?" — and the honest answer is no.
+            return StoreBinding(
+                present=True,
+                readable=False,
+                schema_version=None,
+                snapshot_rev=None,
+                change_event_count=None,
+                binding_ok=False,
+                status="schema_ahead",
+                detail=(
+                    f"on-disk schema {on_disk} exceeds the highest version this "
+                    f"build serves ({HIGHEST_KNOWN_VERSION}); this warpline is older "
+                    f"than the writer and cannot serve the store"
+                ),
+            )
+        repo_id = store_repo_id(repo)
+        count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM change_events WHERE repo_id = ?", (repo_id,)
+            ).fetchone()[0]
+        )
+        snap_row = conn.execute(
+            "SELECT commit_sha FROM edge_snapshots WHERE repo_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (repo_id,),
+        ).fetchone()
+        snapshot_rev = str(snap_row["commit_sha"]) if snap_row is not None else None
+        return StoreBinding(
+            present=True,
+            readable=True,
+            schema_version=on_disk,
+            snapshot_rev=snapshot_rev,
+            change_event_count=count,
+            binding_ok=True,
+            status="ok",
+            detail=f"snapshot store readable and serveable at schema {on_disk}",
+        )
+    except (sqlite3.Error, ValueError, TypeError) as exc:
+        return _binding_unreadable(f"snapshot store unreadable: {exc}")
+    finally:
+        conn.close()
+
+
 def _ensure_store_gitignore(store_dir: Path) -> None:
     gitignore = store_dir / ".gitignore"
     if not gitignore.exists():
@@ -523,7 +676,7 @@ class WarplineStore:
         return int(row["value"])
 
     def _repo_id(self, repo: Path) -> str:
-        return hashlib.sha256(str(repo.resolve()).encode("utf-8")).hexdigest()
+        return store_repo_id(repo)
 
     def ensure_repo(self, repo: Path) -> str:
         repo_id = self._repo_id(repo)
