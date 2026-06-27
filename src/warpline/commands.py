@@ -5,7 +5,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from warpline._attest import worklist_risk
 from warpline._blast import enrich_blast, resolve_changed_inputs, rev_range_commits
+from warpline._completeness import compute_impact_completeness
 from warpline._enrichment import (
     EDGES_FOR_COMPLETENESS,
     completeness_warnings,
@@ -14,8 +16,14 @@ from warpline._enrichment import (
     staleness_warnings,
 )
 from warpline.envelope import build_envelope, enrichment_state
-from warpline.errors import BadRevisionError, InvalidChangedRefsError
+from warpline.errors import (
+    BadRevisionError,
+    InternalError,
+    InvalidChangedRefsError,
+    MissingRequiredFieldError,
+)
 from warpline.federation import LegisClient, RiskClient, consult_federation
+from warpline.git import commits_between, is_ancestor, resolve_commit
 from warpline.listing import (
     apply_filters,
     apply_group_by,
@@ -28,6 +36,7 @@ from warpline.loomweave import (
     LoomweaveMcpClient,
     LoomweaveProbe,
     loomweave_resolve_qualnames,
+    resolve_content_hash_for_locator,
 )
 from warpline.propagation import blast_radius as compute_blast_radius
 from warpline.refs import (
@@ -39,7 +48,13 @@ from warpline.refs import (
 from warpline.reverify import render_reverify_worklist
 from warpline.siblings import RenameFeed, WorkClient
 from warpline.snapshot import capture_edge_snapshot
-from warpline.store import WarplineStore, default_store_path
+from warpline.store import (
+    STORE_STATUS_VOCAB,
+    WarplineStore,
+    default_store_path,
+    read_store_binding,
+)
+from warpline.verification import compose_verification_freshness
 
 # FROZEN schema URIs (one contract per tool; endorsed name and shim share it).
 SCHEMA_CHANGE_LIST = "warpline.change_list.v1"
@@ -48,6 +63,8 @@ SCHEMA_ENTITY_CHURN_COUNT = "warpline.entity_churn_count.v1"
 SCHEMA_IMPACT_RADIUS = "warpline.impact_radius.v1"
 SCHEMA_REVERIFY_WORKLIST = "warpline.reverify_worklist.v1"
 SCHEMA_EDGE_SNAPSHOT = "warpline.edge_snapshot.v1"
+SCHEMA_VERIFICATION_RECORD = "warpline.verification_record.v1"
+SCHEMA_PROJECT_STATUS = "warpline.project_status.v1"
 
 
 def session_context(repo: Path) -> str:
@@ -308,7 +325,6 @@ def change_list(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_CHANGE_LIST,
             query=query,
@@ -397,7 +413,6 @@ def entity_timeline(
         }
         sei_state = "present" if entity_out["sei"] else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         if rename_feed is not None:
             governance_reason = reason("clean")
         else:
@@ -501,7 +516,6 @@ def entity_churn_count(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_ENTITY_CHURN_COUNT,
             query=query,
@@ -661,6 +675,40 @@ def _lazy_capture_if_missing(
         return
 
 
+def _attest_content_hashes(
+    repo: Path,
+    affected_seis: list[str],
+    sei_to_locator: dict[str, str],
+    loomweave_command: str | None,
+) -> dict[str, str]:
+    """Build ``{sei: current content_hash}`` for the worklist's affected SEIs via
+    loomweave, for the risk-as-verification consult. ``sei_to_locator`` is built by
+    the caller from the FULL (pre-page) worklist set, so a > limit worklist still
+    resolves every affected entity. Fail-soft and read-only: an unreachable
+    loomweave (or an unresolvable entity) yields no hash for that SEI, so the attest
+    consumer honestly leaves it unmatched (``attestation_incomplete``) — NEVER a
+    faked-good match. One ``entity_resolve`` round trip per SEI (batching is a clean
+    later optimization); only paid when an attest bundle was supplied."""
+
+    by_sei: dict[str, str] = {}
+    try:
+        command = loomweave_command or os.environ.get("WARPLINE_LOOMWEAVE_COMMAND", "loomweave")
+        client = LoomweaveMcpClient(repo=repo, command=command)
+        try:
+            for sei in affected_seis:
+                locator = sei_to_locator.get(sei)
+                if locator is None:
+                    continue
+                content_hash = resolve_content_hash_for_locator(client, locator)
+                if content_hash:
+                    by_sei[sei] = content_hash
+        finally:
+            _close_if_supported(client)
+    except Exception:  # noqa: BLE001 — advisory consult; never block the worklist.
+        return by_sei
+    return by_sei
+
+
 # ---------------------------------------------------------------------------
 # warpline_impact_radius_get — warpline.impact_radius.v1
 # ---------------------------------------------------------------------------
@@ -760,6 +808,7 @@ def reverify_worklist(
     risk_client: RiskClient | None = None,
     legis_client: LegisClient | None = None,
     loomweave_command: str | None = None,
+    attest_bundle: Any = None,
 ) -> dict[str, Any]:
     refs = parse_changed_refs(changed_refs)
     with WarplineStore.open(default_store_path(repo)) as store:
@@ -777,17 +826,123 @@ def reverify_worklist(
         changed, affected = enrich_blast(store, repo, result)
         completeness = result["completeness"]
         staleness = result["staleness"]
+
+        # Rung 2 Track B — verification freshness (advisory, never gates).
+        # Align entity_key_id to changed/affected ORDER. enrich_blast preserves
+        # the order of result["changed"]/result["affected"] (verified _blast.py:142-157),
+        # whose rows carry entity_key_id; the FROZEN {locator, sei} entity view never
+        # does. The positional alignment changed[i] <-> changed_key_ids[i] is the
+        # invariant render_reverify_worklist relies on to attach the block.
+        changed_key_ids: list[int | None] = [
+            r.get("entity_key_id") if isinstance(r.get("entity_key_id"), int) else None
+            for r in result.get("changed", [])
+        ]
+        affected_key_ids: list[int | None] = [
+            r.get("entity_key_id") if isinstance(r.get("entity_key_id"), int) else None
+            for r in result.get("affected", [])
+        ]
+        # Load ONLY the worklist's change commits (no full-table scan — push the
+        # entity filter into SQL) and group by key id; load verification events once.
+        worklist_key_ids = [k for k in (*changed_key_ids, *affected_key_ids) if k is not None]
+        verification_events = store.list_verification_events(repo)
+        local_source_configured = len(verification_events) > 0
+        changes_by_key: dict[int, list[str]] = {}
+        for ce in store.list_change_events_for_key_ids(repo, worklist_key_ids):
+            kid = ce.get("entity_key_id")
+            if isinstance(kid, int):
+                sha = str(ce.get("commit_sha"))
+                bucket = changes_by_key.setdefault(kid, [])
+                # One entity can have several change_event rows for the SAME commit
+                # (the UNIQUE key is (repo, entity_key_id, commit_sha, path, change_kind),
+                # not commit_sha alone). Collapse adjacent duplicates (rows are
+                # oldest-first) so the covers() fan-out isn't wasted and
+                # entity_change_commits[-1] stays the true latest distinct commit.
+                if not bucket or bucket[-1] != sha:
+                    bucket.append(sha)
+
+        def _covers(verified_commit: str, change_commit: str) -> bool | None:
+            # NOTE the argument inversion: a change is COVERED by a verification
+            # iff the change commit is an ancestor-or-equal of the verified commit
+            # (the gate ran at/after the change). So covers(verified, change) maps
+            # to is_ancestor(ancestor=change_commit, descendant=verified_commit).
+            return is_ancestor(repo, change_commit, verified_commit)
+
+        def _between(ancestor: str, descendant: str) -> int | None:
+            return commits_between(repo, ancestor, descendant)
+
+        _verif_cache: dict[int, dict[str, Any]] = {}
+
+        def verification_for(kid: int | None) -> dict[str, Any]:
+            # kid is None for an affected row that carried no entity_key_id;
+            # compose([], ...) honestly yields "unverified" (nothing to verify).
+            if kid is None:
+                return compose_verification_freshness([], verification_events, _covers, _between)
+            if kid not in _verif_cache:
+                _verif_cache[kid] = compose_verification_freshness(
+                    changes_by_key.get(kid, []),
+                    verification_events,
+                    _covers,
+                    _between,
+                )
+            return _verif_cache[kid]
+
         items, work_seen, filigree_candidates = render_reverify_worklist(
             changed=changed,
             affected=affected,
             completeness=completeness,
             staleness=staleness,
             work_client=work_client,
+            changed_key_ids=changed_key_ids,
+            affected_key_ids=affected_key_ids,
+            verification_for=verification_for,
         )
         items = apply_filters(items, tool="warpline_reverify_worklist_get", filters=filters)
+        # Advisory: stale-of-trust first. Stable presort run JUST BEFORE apply_sort
+        # so apply_sort stays the PRIMARY key (last stable sort wins) and stale-first
+        # is the secondary tiebreak within ties. Never reorders across the primary
+        # key; never removes an item. Relies on apply_sort being a stable sorted()
+        # (listing.py:332) with a sort_by=None passthrough (listing.py:306).
+        # The sort key is (depth, state_rank) so depth stays the default primary
+        # ordering when apply_sort is a passthrough (sort_by=None) AND stale-first
+        # serves as the secondary tiebreak within same-depth groups.
+        _state_rank = {"stale": 0, "unavailable": 1, "unverified": 2, "fresh": 3}
+        items.sort(
+            key=lambda it: (
+                it.get("depth", 0),
+                _state_rank.get(it["verification"]["state"], 3),
+            )
+        )
         items = apply_sort(
             items, tool="warpline_reverify_worklist_get", sort_by=sort_by, sort_order=sort_order
         )
+        # verification_summary reflects the post-filter, pre-page set (mirrors how
+        # completeness/staleness describe the requested set, not the current page).
+        verification_summary = {
+            "fresh": sum(1 for it in items if it["verification"]["state"] == "fresh"),
+            "stale": sum(1 for it in items if it["verification"]["state"] == "stale"),
+            "unverified": sum(1 for it in items if it["verification"]["state"] == "unverified"),
+            "unavailable": sum(1 for it in items if it["verification"]["state"] == "unavailable"),
+            "local_source_configured": local_source_configured,
+        }
+        # Risk-as-verification (Rung 2): the SEIs of the FULL filtered+sorted set
+        # (pre-page, like verification_summary) — the verdict describes the whole
+        # change's worklist, never a single page. Deduped, order-preserving. The
+        # sei->locator map is captured HERE, from the full set, NOT from the
+        # post-apply_page `items` below — otherwise an affected entity that fell off
+        # page 1 would have no locator, no content_hash, and a > limit worklist
+        # could never read proven-good even when the bundle attests every entity.
+        affected_seis: list[str] = []
+        affected_sei_locators: dict[str, str] = {}
+        _seen_seis: set[str] = set()
+        for it in items:
+            entity = it.get("entity", {})
+            sei = entity.get("sei")
+            if isinstance(sei, str) and sei and sei not in _seen_seis:
+                _seen_seis.add(sei)
+                affected_seis.append(sei)
+                loc = entity.get("locator")
+                if isinstance(loc, str) and loc:
+                    affected_sei_locators[sei] = loc
         # group_by buckets the FULL filtered+sorted list (the grouped view is a
         # complete projection, not a page); the flat list still paginates.
         grouped = apply_group_by(items, tool="warpline_reverify_worklist_get", group_by=group_by)
@@ -821,9 +976,48 @@ def reverify_worklist(
             items, repo=repo, tool="warpline_reverify_worklist_get", schema=SCHEMA_REVERIFY_WORKLIST
         )
         items, page = apply_page(items, limit=limit, cursor=cursor)
+        # Federation D1: the self-assessed completeness+staleness of THIS impact
+        # analysis (additive v1 OBJECT, distinct from the FROZEN raw-snapshot
+        # `completeness` STRING above). wardline mirrors this single object verbatim
+        # into its own `producer_completeness` scope-honesty field. Both axes live
+        # inside it: the staleness axis (`as_of` producer timestamp + graph_fresh +
+        # graph_ref) and the completeness axis (status + depth_capped +
+        # unresolved_count). warpline's raw `staleness`/`completeness` are untouched.
+        impact_completeness = compute_impact_completeness(
+            as_of=_now().isoformat(),
+            completeness=completeness,
+            staleness=staleness,
+            unresolved=unresolved,
+            depth_capped=bool(result.get("depth_capped", False)),
+        )
+        # Risk-as-verification (Rung 2): warpline's honest verification posture for
+        # this change. Always emitted. A complete worklist whose every affected
+        # entity is attested clean at its CURRENT body by the PUSHED, UNTRUSTED
+        # wardline-attest-2 `attest_bundle` reads proven-good (echo of wardline's
+        # authority, HMAC unverified); absent/partial/unmatched degrades to
+        # `unavailable` with an explicit machine reason — never a warpline clean.
+        # The per-SEI current content_hash is sourced from loomweave (fail-soft;
+        # only paid when a bundle is supplied — an unreachable loomweave yields no
+        # hashes, so every entity is honestly unmatched, never faked-good).
+        content_hash_by_sei = (
+            _attest_content_hashes(repo, affected_seis, affected_sei_locators, loomweave_command)
+            if attest_bundle is not None
+            else {}
+        )
+        risk_verification = worklist_risk(
+            impact_completeness,
+            affected_seis=affected_seis,
+            bundle=attest_bundle,
+            # only paid when a bundle is present (worklist_risk ignores it otherwise)
+            current_commit=resolve_commit(repo, "HEAD") if attest_bundle is not None else None,
+            content_hash_for_sei=content_hash_by_sei.get,
+        )
         data = {
             "completeness": completeness,
+            "impact_completeness": impact_completeness,
+            "risk_verification": risk_verification,
             "staleness": staleness,
+            "verification_summary": verification_summary,
             "resolved": resolved,
             "unresolved": unresolved,
             "items": items,
@@ -1105,6 +1299,11 @@ def capture_snapshot(
                     f"CAPPED: max_entities={cap} limited the captured entity set; completeness "
                     "downgraded to DELTA (affected-set is not complete)"
                 )
+            if result.get("recapture_skipped"):
+                warnings.append(
+                    f"PRESERVED: loomweave unavailable; existing {result.get('completeness')} "
+                    f"snapshot @ {result.get('commit_sha')} retained, not refreshed"
+                )
             data = {
                 "snapshot_id": result.get("snapshot_id"),
                 "commit_sha": result.get("commit_sha"),
@@ -1138,7 +1337,6 @@ def capture_snapshot(
             "page": {"limit": None, "cursor": None},
         }
         capture_sei_triple = sei_reason(sei_state)
-        assert capture_sei_triple is not None  # unavailable/absent are always in-vocab
         return build_envelope(
             SCHEMA_EDGE_SNAPSHOT,
             query=query,
@@ -1147,3 +1345,142 @@ def capture_snapshot(
             enrichment_reasons={"sei": capture_sei_triple},
             warnings=completeness_warnings(str(data["completeness"])) + warnings,
         )
+
+
+def verify_record(
+    repo: Path,
+    *,
+    commit: str,
+    kind: str,
+    actor: str | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Record a verification (gate-pass) event for ``commit``.
+
+    The 2nd mutating verb (besides capture-snapshot). Writes ONE row to the
+    local ``verification_events`` table (``.weft/warpline/`` only); never a
+    sibling repo. ``commit`` is resolved to an object SHA before storage — a
+    symbolic ref is never persisted. ``kind`` is a free-form non-empty provenance
+    label (e.g. ``test_pass`` / ``ci_pass`` / ``gate_pass``). Idempotent on
+    (repo, commit, kind, source=warpline).
+    """
+
+    kind_clean = kind.strip()
+    if not kind_clean:
+        raise MissingRequiredFieldError(
+            "kind must be a non-empty verification label, e.g. test_pass",
+            rejected_field="kind",
+        )
+    if not commit or not commit.strip():
+        raise MissingRequiredFieldError(
+            "commit must be a non-empty ref or SHA",
+            rejected_field="commit",
+        )
+    resolved = resolve_commit(repo, commit)
+    if resolved is None:
+        raise BadRevisionError(
+            f"could not resolve commit ref {commit!r} to an object SHA",
+            rejected_field="commit",
+        )
+    verified_at = now or _now().isoformat()
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        inserted = store.record_verification_event(
+            repo_id=repo_id,
+            commit_sha=resolved,
+            kind=kind_clean,
+            verified_at=verified_at,
+            actor=actor,
+            source="warpline",
+        )
+    data = {
+        "commit_sha": resolved,
+        "kind": kind_clean,
+        "verified_at": verified_at,
+        "actor": actor,
+        "source": "warpline",
+        "idempotency": "recorded" if inserted else "already_recorded",
+    }
+    query = {
+        "repo": str(repo),
+        "tool": "warpline_verification_record",
+        "arguments": {"commit": commit, "kind": kind, "actor": actor},
+        "filters": {},
+        "sort": {},
+        "page": {"limit": None, "cursor": None},
+    }
+    return build_envelope(
+        SCHEMA_VERIFICATION_RECORD,
+        query=query,
+        data=data,
+        enrichment=enrichment_state(),
+        warnings=[],
+    )
+
+
+# ---------------------------------------------------------------------------
+# warpline_project_status_get — warpline.project_status.v1
+def project_status(repo: Path) -> dict[str, Any]:
+    """Read-only store-binding/health probe — the federation-attachment signal.
+
+    Reports whether THIS warpline build can read and SERVE the snapshot store for
+    ``repo`` (``data.binding_ok``). warpline is repo-per-call — bound to nothing
+    at launch — so this is a *can-service-R* check, never a launch-time binding:
+    given ``repo=R`` the server reads the schema version FROM INSIDE R's snapshot
+    store (``data.store.schema_version``, ``null`` when absent/unreadable), so a
+    stale binary that cannot read its store is caught — unlike mere directory
+    existence, which such a binary would still see.
+
+    Strictly read-only: it creates and migrates no snapshot STATE (unlike every
+    other read tool, which lazily opens — and thus initializes — the store). An
+    absent store reports absent (no DB created) with a ``capture_snapshot``
+    next-action hint, and a present store's ``warpline.db`` is left byte-for-byte
+    unchanged. (Opening a present WAL store read-only may spawn gitignored SQLite
+    ``-wal``/``-shm`` coordination sidecars — not snapshot state.)
+    """
+
+    resolved = repo.resolve()
+    binding = read_store_binding(repo)
+    # Fail closed if the store-read ever yields a status outside the closed vocab
+    # (the same discipline build_envelope applies to the enrichment vocabulary).
+    if binding.status not in STORE_STATUS_VOCAB:
+        raise InternalError(
+            f"store binding produced status {binding.status!r} outside STORE_STATUS_VOCAB"
+        )
+    data: dict[str, Any] = {
+        "resolved_root": str(resolved),
+        "store": {
+            "present": binding.present,
+            "readable": binding.readable,
+            "schema_version": binding.schema_version,
+            "snapshot_rev": binding.snapshot_rev,
+            "change_event_count": binding.change_event_count,
+        },
+        "store_status": binding.status,
+        "binding_ok": binding.binding_ok,
+    }
+    warnings = [] if binding.binding_ok else [binding.detail]
+    next_actions: dict[str, Any] = {}
+    if binding.status == "store_absent":
+        next_actions = {
+            "warpline_edge_snapshot_capture": {
+                "tool": "warpline_edge_snapshot_capture",
+                "arguments": {"repo": str(resolved)},
+            }
+        }
+    query = {
+        "repo": str(resolved),
+        "tool": "warpline_project_status_get",
+        "arguments": {},
+        "filters": {},
+        "sort": {},
+        "page": {"limit": None, "cursor": None},
+    }
+    return build_envelope(
+        SCHEMA_PROJECT_STATUS,
+        query=query,
+        data=data,
+        enrichment=enrichment_state(),
+        next_actions=next_actions,
+        warnings=warnings,
+    )

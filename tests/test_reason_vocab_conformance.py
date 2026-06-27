@@ -113,11 +113,11 @@ def test_carrier_non_clean_requires_cause_and_fix(reason_class: str) -> None:
     assert carrier["cause"] == "why"
     assert carrier["fix"] == "do this"
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         reason(reason_class)  # both missing
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         reason(reason_class, cause="why")  # fix missing
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         reason(reason_class, fix="do this")  # cause missing
 
 
@@ -125,5 +125,5 @@ def test_reason_rejects_non_canonical_class() -> None:
     """reason() refuses to emit a class outside its own closed set — the guard
     that keeps drift from leaking through the constructor at runtime."""
 
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         reason("truncated", cause="x", fix="y")  # not one of the canonical 11

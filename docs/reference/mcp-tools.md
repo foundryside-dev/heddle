@@ -17,11 +17,13 @@ The server speaks line-delimited JSON-RPC on stdin/stdout and supports the
 | `tools/list` | List every tool with its `inputSchema`, `outputSchema`, and `metadata`. |
 | `tools/call` | Invoke a tool by `name` with `arguments`. |
 
-## Six tools, twelve names
+## Eight tools, sixteen names
 
-There are **six** frozen federation tools. Each is registered under **two** names
-— an endorsed name and a short shim — that return identical schema and data. So
-`tools/list` reports twelve entries; they collapse to six tools.
+There are **six** frozen federation contracts, plus `verify_record`
+(verification-freshness) and `project_status` (a read-only binding/health probe)
+— **eight** tools in all. Each is registered under **two** names — an endorsed
+name and a short shim — that return identical schema and data. So `tools/list`
+reports sixteen entries; they collapse to eight tools.
 
 | Endorsed name | Shim | Schema | Mutating? |
 | --- | --- | --- | --- |
@@ -31,10 +33,17 @@ There are **six** frozen federation tools. Each is registered under **two** name
 | `warpline_impact_radius_get` | `blast_radius` | `warpline.impact_radius.v1` | no |
 | `warpline_reverify_worklist_get` | `reverify` | `warpline.reverify_worklist.v1` | no |
 | `warpline_edge_snapshot_capture` | `capture_snapshot` | `warpline.edge_snapshot.v1` | yes (local only) |
+| `warpline_verification_record` | `verify_record` | `warpline.verification_record.v1` | yes (local only) |
+| `warpline_project_status_get` | `project_status` | `warpline.project_status.v1` | no (read-only) |
 
-All tools require `repo` (a path string). The read tools are marked
-`read_only: true` but may initialize `.weft/warpline/` state on first touch; only
-`warpline_edge_snapshot_capture` records new facts.
+All tools require `repo` (a path string). Most read tools are marked
+`read_only: true` but may initialize `.weft/warpline/` state on first touch (they
+open the store, which creates/migrates it). The exception is
+`warpline_project_status_get`: it is the one **genuinely** read-only tool —
+`writes_local_state: false`, `mutates_paths: []` — and reports an absent store as
+absent rather than initializing it. `warpline_edge_snapshot_capture` and
+`warpline_verification_record` are the two mutating tools — both write only to
+`.weft/warpline/`.
 
 ## The success envelope
 
@@ -371,3 +380,97 @@ With loomweave absent, `completeness` is `SKIPPED` and `source_version` is
 capture (listed in `failed_entities`); the snapshot is usable but a floor.
 `enrichment.sei` is `unavailable` when loomweave was unreachable (the SEI authority
 could not be consulted), else `absent`.
+
+---
+
+## `warpline_verification_record` / `verify_record`
+
+`warpline.verification_record.v1` — **2nd mutating tool**. Records a gate-pass
+verification event for a commit into `.weft/warpline/`. Never mutates a sibling repo.
+Advisory; warpline never gates. Idempotent on `(repo, commit, kind, source=warpline)`.
+
+**Input**
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `repo` | string | (required) |
+| `commit` | string | (required) commit ref — resolved to object SHA before storage; symbolic refs are never persisted. |
+| `kind` | string | (required) free-form non-empty provenance label, e.g. `test_pass`, `ci_pass`, `gate_pass`. |
+| `actor` | string \| null | optional — who recorded the event. |
+
+**`data`**
+
+```json
+{
+  "commit_sha": "...",
+  "kind": "test_pass",
+  "verified_at": "2026-06-25T10:00:00+00:00",
+  "actor": "ci",
+  "source": "warpline",
+  "idempotency": "recorded | already_recorded"
+}
+```
+
+`idempotency: already_recorded` means the row already existed (a second call for
+the same `(repo, commit, kind)` tuple is a no-op — exactly one row is stored).
+All enrichment keys are at their default state (`sei: absent`, `edges: absent`,
+`work: unavailable`, `risk: unavailable`, `governance: unavailable`,
+`requirements: unavailable`) — no graph-layer dependency.
+
+## `warpline_project_status_get` / `project_status`
+
+`warpline.project_status.v1` — **read-only binding/health probe**. Reports
+whether THIS warpline build can read and **serve** the snapshot store for `repo`
+(`data.binding_ok`). warpline is repo-per-call — bound to nothing at launch — so
+this is a *can-service-R* check, not a launch-time binding: given `repo=R` the
+server reads the schema version **from inside** R's snapshot store
+(`data.store.schema_version`, `null` when absent/unreadable), so a stale binary
+that cannot read its store is caught — unlike mere directory existence, which
+such a binary would still see.
+
+Strictly read-only: it is the one tool with `writes_local_state: false` /
+`mutates_paths: []`. It creates and migrates no snapshot state — an absent store
+reports absent (no DB is created; with a `capture_snapshot` next-action), and a
+present store's `warpline.db` is left byte-for-byte unchanged. (Opening a present
+WAL-mode store read-only may spawn gitignored `-wal`/`-shm` SQLite coordination
+sidecars — these are not snapshot state; `mode=ro` is chosen over `immutable=1`
+so the probe always reads the latest committed schema version.)
+
+**Input**
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `repo` | string | (required) — absolute path of the repo to probe. |
+
+**`data`**
+
+```json
+{
+  "resolved_root": "/abs/path/to/repo",
+  "store": {
+    "present": true,
+    "readable": true,
+    "schema_version": 4,
+    "snapshot_rev": "c0ffee",
+    "change_event_count": 2221
+  },
+  "store_status": "ok",
+  "binding_ok": true
+}
+```
+
+`binding_ok` is true **iff** the store is present, readable, and at a schema
+version this build serves. The three not-bound outcomes (`store_status` is a
+closed vocab: `ok` | `store_absent` | `store_unreadable` | `schema_ahead`):
+
+| Outcome | `store_status` | `store.present` | `store.readable` | `store.schema_version` | `binding_ok` |
+| --- | --- | --- | --- | --- | --- |
+| Store readable + serveable | `ok` | `true` | `true` | `<int>` | `true` |
+| Never `capture_snapshot`-ed | `store_absent` | `false` | `false` | `null` | `false` |
+| Corrupt / unparseable store | `store_unreadable` | `true` | `false` | `null` | `false` |
+| Written by a newer build (schema beyond this binary — the stale-binary case) | `schema_ahead` | `true` | `false` | `null` | `false` |
+
+When not bound, the human-readable reason rides on `warnings[0]` (e.g. naming the
+on-disk schema vs the highest this build serves). Federation consumers (e.g.
+Lacuna's MCP-attachment harness) assert on `data.binding_ok` plus
+`data.store.schema_version is not null` — the non-tautological store-read signal.

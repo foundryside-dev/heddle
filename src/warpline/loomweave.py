@@ -299,6 +299,59 @@ def _sei_from_resolve_results(payload: dict[str, object], locator: str) -> str |
     return None
 
 
+def resolve_content_hash_for_locator(client: ToolClient, locator: str) -> str | None:
+    """The entity-body ``content_hash`` loomweave records for ``locator`` (or None).
+
+    Sourced from the SAME ``entity_resolve`` round trip warpline already uses for the
+    SEI (the result/candidate carries both ``sei`` and ``content_hash``), so the body
+    hash warpline compares against a ``wardline-attest-2`` boundary is loomweave's own
+    per-entity hash — the identical value wardline binds into the bundle (confirmed
+    byte-equal across loomweave's MCP ``entity_resolve`` and its HTTP
+    ``/api/v1/identity/sei`` surface, which is wardline's bundle-builder source)."""
+
+    candidates = loomweave_resolve_qualnames(locator)
+    try:
+        payload = client.call_tool("entity_resolve", {"qualnames": candidates})
+    except Exception:
+        return None
+    for candidate in candidates:
+        chash = _content_hash_from_resolve_results(payload, candidate)
+        if chash is not None:
+            return chash
+    entity = payload.get("entity") if isinstance(payload, dict) else None
+    if isinstance(entity, dict):
+        chash = entity.get("content_hash")
+        return chash if isinstance(chash, str) and chash else None
+    return None
+
+
+def _content_hash_from_resolve_results(payload: dict[str, object], locator: str) -> str | None:
+    results = payload.get("results")
+    if not isinstance(results, list):
+        return None
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        qualname = result.get("qualname")
+        if isinstance(qualname, str) and qualname != locator:
+            continue
+        entity = result.get("entity")
+        if isinstance(entity, dict):
+            chash = entity.get("content_hash")
+            if isinstance(chash, str) and chash:
+                return chash
+        candidates = result.get("candidates")
+        if not isinstance(candidates, list):
+            continue
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            chash = candidate.get("content_hash")
+            if isinstance(chash, str) and chash:
+                return chash
+    return None
+
+
 _SOURCE_ROOTS = ("src", "lib")
 
 

@@ -82,6 +82,65 @@ def _git_optional(repo: Path, args: list[str]) -> str | None:
     return result.stdout.strip()
 
 
+def resolve_commit(repo: Path, ref: str) -> str | None:
+    """Resolve ``ref`` to a 40-hex commit object SHA, or None if unresolvable.
+
+    Uses ``rev-parse --verify <ref>^{commit}`` so a tag/branch/``HEAD`` resolves
+    to the underlying commit and a non-commit object is rejected. Never raises:
+    a bad ref returns None for the caller to turn into a structured error.
+    """
+
+    # The doubled braces escape to a literal ``^{commit}`` (git peel-to-commit
+    # syntax) — they are f-string brace escaping, not part of the ref.
+    out = _git_optional(repo, ["rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"])
+    if out is None:
+        return None
+    return out if len(out) == 40 else None
+
+
+def is_ancestor(repo: Path, ancestor: str, descendant: str) -> bool | None:
+    """Is ``ancestor`` an ancestor-or-equal of ``descendant``?
+
+    Wraps ``git merge-base --is-ancestor``: exit 0 -> True, exit 1 -> False, any
+    other exit (unknown/missing commit, shallow clone) -> None ("could not
+    compute" — fail-soft, never a crash, never a silent False).
+    """
+
+    proc = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=repo,
+        check=False,
+        capture_output=True,
+    )
+    if proc.returncode == 0:
+        return True
+    if proc.returncode == 1:
+        return False
+    return None
+
+
+def commits_between(repo: Path, ancestor: str, descendant: str) -> int | None:
+    """Count commits in ``ancestor..descendant`` (excludes ancestor), or None.
+
+    ``git rev-list --count ancestor..descendant``. None on any git failure
+    (unknown commit, etc.). Zero when the two are the same commit.
+    """
+
+    proc = subprocess.run(
+        ["git", "rev-list", "--count", f"{ancestor}..{descendant}"],
+        cwd=repo,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        return None
+    try:
+        return int(proc.stdout.strip())
+    except ValueError:
+        return None
+
+
 def _detect_anchor(repo: Path) -> _Anchor:
     """Compute the working-context anchor once, at detection time.
 

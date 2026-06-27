@@ -43,6 +43,17 @@ def run_mcp_smoke(repo: Path, *, include_bad_input: bool = True) -> dict[str, An
                 {"jsonrpc": "2.0", "id": 5, "method": "tools/list", "params": {}},
             ]
         )
+    # The read-only binding probe always answers (binding_ok may be false on a
+    # storeless smoke repo — that is a successful CALL with a false VERDICT, not a
+    # tool error), so the smoke asserts only its structural shape.
+    requests.append(
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {"name": "project_status", "arguments": {"repo": str(repo)}},
+        }
+    )
     responses = _run_stdio_conversation(requests)
     checks = _checks(responses, include_bad_input=include_bad_input)
     return {
@@ -117,7 +128,47 @@ def _checks(
                 },
             ]
         )
+    status_response = by_id.get(6, {})
+    checks.append(
+        {
+            "name": "project_status_reports_binding",
+            "ok": _project_status_ok(status_response),
+            "details": _project_status_summary(status_response),
+        }
+    )
     return checks
+
+
+def _project_status_ok(response: dict[str, Any]) -> bool:
+    payload = _structured_content(response)
+    if not isinstance(payload, dict) or payload.get("ok") is not True:
+        return False
+    if payload.get("schema") != "warpline.project_status.v1":
+        return False
+    data = payload.get("data")
+    if not isinstance(data, dict) or not isinstance(data.get("binding_ok"), bool):
+        return False
+    store = data.get("store")
+    # The load-bearing store-read field must be present (value may be null on a
+    # storeless repo — that is the honest absent sentinel).
+    return isinstance(store, dict) and "schema_version" in store
+
+
+def _project_status_summary(response: dict[str, Any]) -> dict[str, Any]:
+    payload = _structured_content(response)
+    if not isinstance(payload, dict):
+        return {"payload": None}
+    data = payload.get("data")
+    if not isinstance(data, dict):
+        return {"schema": payload.get("schema"), "ok": payload.get("ok")}
+    store = data.get("store")
+    schema_version = store.get("schema_version") if isinstance(store, dict) else None
+    return {
+        "schema": payload.get("schema"),
+        "binding_ok": data.get("binding_ok"),
+        "store_status": data.get("store_status"),
+        "schema_version": schema_version,
+    }
 
 
 def _initialize_ok(result: object) -> bool:

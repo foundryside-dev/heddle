@@ -37,10 +37,12 @@ def reason(
     """Build a weft-reason carrier. ``clean`` omits cause/fix; every other class
     MUST carry both (fix recruits the caller toward what they wanted)."""
 
-    assert reason_class in REASON_CLASSES, f"{reason_class!r} not in the canonical 11"
+    if reason_class not in REASON_CLASSES:
+        raise ValueError(f"{reason_class!r} not in the canonical 11")
     if reason_class == "clean":
         return {"reason_class": "clean"}
-    assert cause and fix, f"non-clean reason {reason_class!r} requires both cause and fix"
+    if not (cause and fix):
+        raise ValueError(f"non-clean reason {reason_class!r} requires both cause and fix")
     return {"reason_class": reason_class, "cause": cause, "fix": fix}
 
 

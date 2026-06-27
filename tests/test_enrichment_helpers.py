@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from warpline import commands
 from warpline._enrichment import (
     EDGES_FOR_COMPLETENESS,
@@ -174,8 +176,9 @@ def test_sei_unavailable_is_unreachable_with_cause_and_fix() -> None:
     assert triple["fix"]
 
 
-def test_sei_unknown_state_yields_no_triple() -> None:
-    assert sei_reason("bogus") is None
+def test_sei_unknown_state_raises_value_error() -> None:
+    with pytest.raises(ValueError):
+        sei_reason("bogus")
 
 
 def test_requirements_reason_is_stable_disabled() -> None:

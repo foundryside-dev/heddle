@@ -1,4 +1,4 @@
-"""The 18 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
+"""The 19 FROZEN golden vectors (interface-lock §1D, 2C, 3C, 4C).
 
 These are warpline's contribution as the 5th producer to the four-member
 conformance oracle (GS-7). Each test is one frozen (input → output assertion)
@@ -68,6 +68,20 @@ def _add_change(
         actor=actor,
         changed_at=changed_at,
     )
+
+
+def _commit_file(repo: Path, name: str, body: str) -> str:
+    """Write *name* to *repo*, git-add, commit, and return the resolved HEAD SHA."""
+    (repo / name).write_text(body)
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-q", "-m", f"touch {name}"],
+        cwd=repo, check=True, capture_output=True,
+    )
+    return subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo, check=True, text=True, capture_output=True,
+    ).stdout.strip()
 
 
 class _FullNeighborhoodClient:
@@ -176,7 +190,13 @@ def test_gv_lw_3_capture_full_then_skipped(tmp_path: Path) -> None:
     assert full["completeness"] == "FULL"
     assert full["edges"] > 0
 
-    skipped = commands.capture_snapshot(repo, commit="c1", loomweave_command="/no/such/loomweave")
+    # The frozen contract is "loomweave absent -> SKIPPED" for a commit with no
+    # usable prior. Exercise it at a DISTINCT commit (c2), not c1: re-capturing
+    # c1 (which already holds the FULL above) must PRESERVE that snapshot, never
+    # downgrade it to a 0-edge SKIPPED row — that is the GV-LW-6 fail-closed
+    # doctrine (a loomweave-absent recapture is the same data-loss class as a
+    # mid-capture kill), and is locked by test_capture_skipped_preserves_prior_*.
+    skipped = commands.capture_snapshot(repo, commit="c2", loomweave_command="/no/such/loomweave")
     assert skipped["data"]["completeness"] == "SKIPPED"
     assert skipped["data"]["edges"] == 0
     assert skipped["enrichment"]["edges"] == "skipped"
@@ -482,3 +502,66 @@ def test_gv_hon_req_requirements_is_reserved_but_honest_on_every_tool(tmp_path: 
         assert triple["cause"]
         assert "reserved" in triple["cause"].lower()
         assert triple["fix"]
+
+
+# ============================================================ SEAM 5 — verification freshness
+def test_gv_vf_1_reverify_verification_freshness_is_explained(tmp_path: Path) -> None:
+    """GV-VF-1: the reverify worklist carries an HONEST verification block.
+
+    Locks: (a) unverified-when-no-source — every item reads ``unverified`` with a
+    ``disabled`` reason when no gate pass is recorded; (b) ``fresh`` once the
+    change is verified; (c) the never-filter invariant — recording verification
+    annotates/sorts but never removes an item; (d) verification rides the data
+    block, never the FROZEN enrichment vocab.
+    """
+
+    repo = _git_repo(tmp_path)
+    # One real commit so verify-record can resolve HEAD to an object SHA.
+    head = _commit_file(repo, "m.py", "v0\n")
+    with _store(repo) as store:
+        repo_id = store.ensure_repo(repo)
+        key_id = store.ensure_entity_key(repo_id, "python:function:m.py::f", None, head)
+        store.append_change_event(
+            repo_id=repo_id, entity_key_id=key_id, commit_sha=head, path="m.py",
+            change_kind="modified", actor="dev", changed_at="2026-06-25T08:00:00+00:00",
+        )
+
+    # (a) No verification recorded yet -> unverified + explained.
+    env = commands.reverify_worklist(repo, [key_id])
+    summary = env["data"]["verification_summary"]
+    assert summary["local_source_configured"] is False
+    assert summary["unverified"] >= 1
+    assert env["data"]["items"], "expected a non-empty worklist"
+    n_items = len(env["data"]["items"])
+    item = env["data"]["items"][0]
+    assert item["verification"]["state"] == "unverified"
+    assert item["verification"]["reason"]["reason_class"] == "disabled"
+    assert item["verification"]["reason"]["cause"] and item["verification"]["reason"]["fix"]
+    # (d) verification is NOT in the frozen enrichment vocab.
+    assert "verification" not in env["enrichment"]
+    assert "verification" not in env["enrichment_reasons"]
+    # Honesty meta preserved on the pre-verify envelope too.
+    assert env["meta"]["local_only"] is True
+    assert env["meta"]["peer_side_effects"] == []
+
+    # (b) record a gate pass at HEAD -> fresh.
+    commands.verify_record(repo, commit=head, kind="test_pass", now="2026-06-25T10:00:00+00:00")
+    env2 = commands.reverify_worklist(repo, [key_id])
+    assert env2["data"]["verification_summary"]["local_source_configured"] is True
+    assert env2["data"]["verification_summary"]["fresh"] >= 1
+    assert env2["data"]["items"], "expected a non-empty worklist after verification"
+    assert any(i["reason"] == "changed" for i in env2["data"]["items"])
+    fresh_item = next(i for i in env2["data"]["items"] if i["reason"] == "changed")
+    assert fresh_item["verification"]["state"] == "fresh"
+    assert fresh_item["verification"]["last_verified_commit"] == head
+
+    # (c) never-filter is an IDENTITY invariant, not just cardinality: the exact
+    # SET of entities is unchanged by recording verification (count-equality alone
+    # would pass a buggy impl that drops one item and re-adds a different one).
+    assert len(env2["data"]["items"]) == n_items
+    before_locators = {i["entity"]["locator"] for i in env["data"]["items"]}
+    after_locators = {i["entity"]["locator"] for i in env2["data"]["items"]}
+    assert after_locators == before_locators
+    # Honesty meta preserved.
+    assert env2["meta"]["local_only"] is True
+    assert env2["meta"]["peer_side_effects"] == []

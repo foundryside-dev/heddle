@@ -6,7 +6,11 @@ through their READ-ONLY surfaces:
 
   * filigree — issues touching the SEIs (entity-association reverse lookup);
   * wardline — trust/risk findings keyed on the entity qualname (``dossier``);
-  * legis   — governance / closure posture for the entity.
+  * legis   — VERIFIED GOVERNANCE CLEARANCES for the entity (governance_read.v1,
+              cleared-only). An empty read is "no verified clearance", which
+              conflates ungoverned, unknown-SEI, AND actively-blocked-awaiting-
+              sign-off — so warpline renders it ``governance=absent`` ("no verified
+              clearance"), NEVER "ungoverned", and never gates on it.
 
 THE HONESTY INVARIANT (PDR-0023), applied per-member. include_federation is the
 mini-L2 strategic-view: a confident-empty federation block (a member silently
@@ -105,6 +109,100 @@ class WardlineDossierClient:
 
 
 # ---------------------------------------------------------------------------
+# legis read transport — `legis governance-read <SEI>` (governance_read.v1; JSON-only)
+# ---------------------------------------------------------------------------
+class LegisGovernanceUnavailable(Exception):
+    """legis could not produce a signature-verifiable governance read.
+
+    Raised for a ``status: unavailable`` envelope (tampered/unverifiable trail) AND
+    for any transport failure (nonzero exit, missing binary, unparseable output).
+    ``_consult_legis`` maps it to ``unreachable`` — an honest "asked, could not
+    answer", never a confident-empty.
+    """
+
+    def __init__(self, sei: str, reasons: list[dict[str, Any]] | None = None) -> None:
+        self.sei = sei
+        self.reasons = reasons or []
+        super().__init__(f"legis governance read unavailable for {sei}: {self.reasons}")
+
+
+class LegisGovernanceClient:
+    """Real legis read client over the ``legis governance-read`` CLI verb.
+
+    legis OWNS the ``governance_read.v1`` contract (mirrored at
+    ``contracts/governance_read.v1.schema.json``); this is warpline's READ-ONLY,
+    advisory consult of it and never mutates legis state. The read reports VERIFIED
+    CLEARANCES ONLY (operator override / cleared sign-off) — so an empty
+    ``records`` is "no verified clearance", which deliberately CONFLATES truly
+    ungoverned, unknown-SEI, AND actively-BLOCKED-awaiting-sign-off. warpline
+    therefore renders empty as ``governance=absent`` ("no verified clearance"),
+    NEVER "ungoverned". The clearance ``content_hash`` is ECHOED verbatim and never
+    re-derived against the current body (governance is an echo, not a verdict).
+    """
+
+    def __init__(self, repo: Path, command: str = "legis", timeout: float = 30.0) -> None:
+        self.repo = repo
+        self.command = command
+        self.timeout = timeout
+
+    @classmethod
+    def available(cls, repo: Path, command: str = "legis") -> bool:
+        """Does the installed legis advertise the ``governance-read`` verb?
+
+        Gates the live wiring: until legis ships the read surface, the verb is
+        absent and the honest posture is ``disabled`` (capability absent), NOT a
+        forced ``unreachable``. A cheap ``--help`` probe — negligible against the
+        per-SEI filigree/wardline subprocesses already on the federated path.
+        """
+
+        try:
+            proc = subprocess.run(
+                [command, "--help"],
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                timeout=10.0,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return False
+        return "governance-read" in (proc.stdout or "") + (proc.stderr or "")
+
+    def governance_for_sei(self, sei: str) -> list[dict[str, Any]]:
+        try:
+            # `legis governance-read <SEI>` — output is ALWAYS JSON (no `--json`
+            # flag; passing one is an argparse error -> nonzero exit). Matches
+            # legis's shipped CLI contract (legis src/legis/cli.py).
+            proc = subprocess.run(
+                [self.command, "governance-read", sei],
+                cwd=self.repo,
+                check=True,
+                text=True,
+                capture_output=True,
+                timeout=self.timeout,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            # nonzero exit (tampered trail / unknown verb) or missing binary.
+            raise LegisGovernanceUnavailable(sei) from exc
+        try:
+            payload = json.loads(proc.stdout)
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise LegisGovernanceUnavailable(sei) from exc
+        if not isinstance(payload, dict):
+            raise LegisGovernanceUnavailable(sei)
+        status = payload.get("status")
+        if status == "unavailable":
+            unavailable = payload.get("unavailable")
+            reasons = unavailable if isinstance(unavailable, list) else None
+            raise LegisGovernanceUnavailable(sei, reasons)
+        if status != "checked":
+            raise LegisGovernanceUnavailable(sei)
+        records = payload.get("records", [])
+        if not isinstance(records, list):
+            return []
+        return [r for r in records if isinstance(r, dict)]
+
+
+# ---------------------------------------------------------------------------
 # per-member consult — each returns (entries_by_locator, member_reason)
 # ---------------------------------------------------------------------------
 def _seis(items: list[dict[str, Any]]) -> list[tuple[str, str]]:
@@ -188,20 +286,21 @@ def _consult_legis(
     items: list[dict[str, Any]], legis_client: LegisClient | None
 ) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
     if legis_client is None:
-        # The legis CLI exposes only serve/mcp/gate verbs — there is NO per-SEI /
-        # per-entity governance read on the CLI. Honest posture: disabled with a
-        # recruiting fix, NEVER a faked-empty governance result. Reported as a
-        # transport_blocker for the strike.
+        # A LegisGovernanceClient EXISTS now, but it is only wired when the installed
+        # legis advertises the `governance-read` verb (capability-gated in mcp.py).
+        # When it does not, the honest posture is `disabled` (the read CAPABILITY is
+        # absent) — NOT `unreachable` (which would imply a wired-but-down transport)
+        # and NEVER a faked-empty governance result. Reported as a transport_blocker.
         return {}, reason(
             "disabled",
             cause=(
-                "no per-entity legis governance read transport is wired: the legis CLI exposes "
-                "serve/mcp/governance-gate only, not a per-SEI closure/posture read"
+                "the legis governance-read surface (governance_read.v1) is not available from "
+                "the installed legis: no per-SEI verified-clearance read was advertised"
             ),
             fix=(
-                "wire a LegisClient over the legis governance read surface "
-                "(GET /api/.../governance keyed on the SEI, or the legis MCP governance read) "
-                "and pass it to reverify; until then governance is honestly disabled, not empty"
+                "install/upgrade legis to a version exposing the `governance-read` verb "
+                "(governance_read.v1); warpline auto-wires its LegisGovernanceClient once the "
+                "verb is advertised, so governance lights up — until then it is honestly disabled"
             ),
         )
     by_locator: dict[str, list[dict[str, Any]]] = {}
@@ -310,8 +409,9 @@ def federation_transport_blockers(
             {
                 "member": "legis",
                 "need": (
-                    "a per-entity legis governance read transport — the legis CLI exposes only "
-                    "serve/mcp/governance-gate, no per-SEI closure/posture read"
+                    "a legis exposing the `governance-read` verb (governance_read.v1) so the "
+                    "per-SEI verified-governance read lights up — warpline's LegisGovernanceClient "
+                    "auto-wires once the installed legis advertises it"
                 ),
             }
         )

@@ -8,6 +8,124 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [Unreleased]
+
+### Added
+- **`warpline_project_status_get` / `project_status` — read-only store-binding
+  probe (`warpline.project_status.v1`).** A new MCP tool that reports whether THIS
+  build can read and *serve* the snapshot store for a given `repo`
+  (`data.binding_ok`), reading `schema_version` **from inside** the store — never
+  mere directory existence — so a stale-but-running warpline that cannot read its
+  `.weft/warpline` store at a compatible schema is caught (the federation
+  attachment signal Lacuna's `make verify` harness asserts on). It is the first
+  **genuinely** read-only tool: `writes_local_state: false`, `mutates_paths: []`,
+  and it creates/migrates **no snapshot state** — an absent store reports
+  `store_status: store_absent` with a `capture_snapshot` next-action (no DB is
+  created), a corrupt store `store_unreadable`, and a store written by a newer
+  build `schema_ahead` (all three: `binding_ok: false`, `schema_version: null`);
+  a present store's `warpline.db` is left byte-for-byte unchanged. Reads the store
+  strictly read-only (`mode=ro`, no create-on-missing; opening a present WAL store
+  may spawn gitignored `-wal`/`-shm` coordination sidecars, which are not snapshot
+  state). The frozen
+  six-tool federation-contract inventory (`mcp-tool-inventory.json`) is unchanged
+  — this is an additive health probe, not a frozen data contract.
+- **legis governance read consumer (`governance_read.v1`).** `reverify
+  --include_federation` now lights up the previously-inert `legis` member with a
+  real `LegisGovernanceClient` over the `legis governance-read <SEI>` verb
+  (output is always JSON; matched to legis's shipped CLI, no `--json` flag),
+  consuming legis's authoritative `governance_read.v1` (verified clearances only:
+  operator override / cleared sign-off). Mirrored BYTE-FOR-BYTE as the source of
+  truth at `contracts/governance_read.v1.schema.json` (legis OWNS it; warpline
+  echoes advisorily and NEVER gates — `GV-LG-1`, no `governance_verdict` in
+  output). The mirror tracks legis's hardened discriminated union (`unavailable` ⇒
+  non-empty reasons + empty `records`; `checked` ⇒ no `unavailable` key) — a
+  backward-compatible tightening, pinned by consumer-side rejection tests so an
+  `unavailable` answer can never masquerade as a clean empty.
+  The clearance `content_hash` is echoed verbatim, NOT re-derived against the current
+  body (governance is an echo, not a warpline-asserted verdict — contrast the
+  attest-2 path). Honesty: an empty read is `governance: absent` = "no verified
+  clearance," which deliberately conflates *ungoverned*, *unknown-SEI*, and an
+  entity **actively BLOCKED awaiting sign-off** — so `absent` is never
+  "ungoverned" (disclosed in the schema + the federation reference docs). Wiring
+  is **capability-gated**: the client is wired only when the installed legis
+  advertises `governance-read`; until then the member is honestly `disabled`
+  (capability absent), not a forced `unreachable`, and lights up automatically
+  once legis ships the verb. The `governance_read.v1` schema vectors are the
+  contract's canonical samples, not a live capture (the read surface is unshipped
+  at time of writing).
+- **Risk-as-verification: wardline-attest-2 consumer (Rung 2).** Closes the
+  `verification_source_absent` gap D1 left open. warpline now consumes a PUSHED,
+  UNTRUSTED `wardline-attest-2` evidence bundle and, for a worklist whose impact
+  set is genuinely `complete`, reads **proven-good** iff EVERY affected entity is
+  attested clean at its CURRENT body — mechanical `(commit, content_hash)`
+  equality per SEI against the bundle's boundaries (`verdict == "clean"`, not
+  `dirty`, commit pins, content_hash matches loomweave's per-entity body hash).
+  The body hash is sourced from the SAME loomweave `entity_resolve` round trip
+  warpline already uses for the SEI (`resolve_content_hash_for_locator`); it is
+  byte-identical to the value wardline binds into the bundle (verified across
+  loomweave's MCP `entity_resolve` and HTTP `/api/v1/identity/sei` surfaces). The
+  verdict is an **echo of wardline's authority, signature NOT verified by
+  warpline** (`authority: "wardline"`, `signature_verified: false`) — never a
+  warpline-minted clean. Every honesty edge (no bundle, non-attest-2 schema,
+  dirty tree, null/mismatched commit, `sei_source: "unavailable"`, null sei /
+  content_hash, non-clean verdict, ANY unmatched affected entity) degrades to
+  `unavailable` with an explicit machine reason; proven-good is all-or-nothing.
+  Pure consumer (`_attest.worklist_risk`); layered on D1's completeness gate.
+  WIRED on the real surfaces: `warpline reverify --attest-bundle <file>` (CLI) and
+  the `attest_bundle` MCP arg ingest the pushed bundle; the verdict is emitted at
+  `data.risk_verification` on EVERY worklist (without a bundle it honestly reads
+  `verification_source_absent`). The per-SEI current content_hash is fetched from
+  the same loomweave `entity_resolve` round trip warpline already makes
+  (fail-soft). Documented in `contracts/reverify_worklist.v1.schema.json`.
+- **Impact-completeness self-assessment (federation D1).** The reverify worklist
+  now carries an additive `data.impact_completeness` object —
+  `{status: complete|partial|unknown, as_of, graph_fresh, graph_ref, depth_capped,
+  unresolved_count, reasons[]}` — warpline's honest verdict on whether the impact
+  set is exhaustive for the change. One object declares BOTH axes: the staleness
+  axis (`as_of` producer timestamp + `graph_fresh` + `graph_ref`) and the
+  completeness axis (`status` + `depth_capped` + `unresolved_count`).
+  `status="complete"` is emitted ONLY when the graph is positively fresh (FULL,
+  `commits_behind==0`), the blast traversal hit no depth cap, and zero changed
+  entities were unresolved; any gap → `partial`; no graph at all → `unknown`.
+  Never `complete` on a guess. A new `depth_capped` signal in the blast traversal
+  honestly reports when a depth-bounded scope left reachable impact unexplored.
+  This is the field downstream consumers (wardline mirrors it verbatim into
+  `producer_completeness`) rely on to NOT treat a narrowed scope as authoritative.
+  Published as a drift-checkable contract artifact at
+  `contracts/reverify_worklist.v1.schema.json` (JSON Schema, draft 2020-12), which
+  validates real worklist output. Consumer side (risk-as-verification): an absent
+  or non-`complete` assessment degrades warpline's own risk path to
+  `risk=unavailable` with an explicit reason (`completeness_not_declared` /
+  `completeness_partial`) — never `clean`. Additive on `.v1`: the FROZEN raw
+  snapshot-completeness `data.completeness` STRING enum is unchanged (raw signal
+  vs. derived assessment); no `v2` bump.
+- **Verification freshness (Rung 2, Track B).** The reverify worklist now carries
+  an advisory per-item `verification` block (`fresh` / `stale` / `unverified` /
+  `unavailable`) with a trust-decay signal, plus a `verification_summary` rollup —
+  answering "what changed since it was last proven good." Sourced from warpline's
+  own gate result via a new mutating verb `verify-record` (CLI) /
+  `warpline_verification_record` (MCP), the 2nd local-only mutating tool. Advisory
+  and enrich-only: it annotates and re-sorts (stale-of-trust first) but NEVER
+  filters an item, and NEVER gates. Sibling-sourced verification (wardline/
+  filigree/legis) remains honest-absent RESERVED. New schema v4
+  (`verification_events`); golden vector `GV-VF-1`. The frozen `warpline.<contract>.v1`
+  envelope and the closed 6-key enrichment vocab are untouched (verification rides
+  the reverify-item schema, not the enrichment vocab).
+
+### Fixed
+- **Weft-reason honesty invariant now survives `python -O`.** `listing.reason()`
+  enforced its carrier rule (class-membership, and "every non-clean carrier MUST
+  carry both cause and fix") with bare `assert`s, which `-O` strips — so under
+  `-O` a hollow `{reason_class: "disabled"}` triple with no cause/fix could ship,
+  the exact unexplained-absence the honesty doctrine forbids. Promoted both checks
+  to raised `ValueError`, and hardened `build_envelope` to reject a non-clean
+  `enrichment_reasons` triple missing cause/fix (closing the parallel
+  hand-built-via-kwarg path, which bypassed `reason()` even without `-O`).
+  `sei_reason()` is now non-Optional — it raises on an out-of-vocab state, which
+  removed four `-O`-strippable narrowing asserts at its call sites. Internal
+  hardening only; the frozen `warpline.<contract>.v1` envelope and the closed
+  enrichment vocab are unchanged.
+
 ## [1.2.0] - 2026-06-24
 
 Minor release: spine hardening. Snapshot capture is now correct-by-construction and

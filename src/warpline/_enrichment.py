@@ -103,15 +103,15 @@ def requirements_reason() -> dict[str, Any]:
     )
 
 
-def sei_reason(sei_state: str) -> dict[str, Any] | None:
+def sei_reason(sei_state: str) -> dict[str, Any]:
     """Map a closed ``enrichment.sei`` scalar to its explanatory weft-reason triple.
 
     ``present`` is an earned ``clean``; ``absent`` (peer present, the changed
     locator never resolved to an SEI) is ``unresolved_input``; ``unavailable``
     (the Loomweave SEI authority was unreachable, e.g. mid-capture) is
-    ``unreachable``. Returns ``None`` for any value outside the closed vocab so a
-    caller never attaches a triple it cannot explain. Reuses the canonical 11 —
-    no new reason_class.
+    ``unreachable``. Raises ValueError for any value outside the closed vocab so a
+    caller never attaches a triple it cannot explain (and so the call sites need no
+    narrowing assert). Reuses the canonical 11 — no new reason_class.
     """
 
     if sei_state == "present":
@@ -140,4 +140,7 @@ def sei_reason(sei_state: str) -> dict[str, Any] | None:
                 "recapture/re-query so SEIs can be resolved"
             ),
         )
-    return None
+    raise ValueError(
+        f"sei_state {sei_state!r} is outside the closed enrichment.sei vocab "
+        "(present|absent|unavailable)"
+    )

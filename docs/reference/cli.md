@@ -295,8 +295,8 @@ entities are added when a snapshot exists.
 
 ### `warpline capture-snapshot`
 
-The only mutating query command: capture loomweave's dated edges into the local
-store. Writes only `.weft/warpline/`. Schema `warpline.edge_snapshot.v1`.
+Mutating: capture loomweave's dated edges into the local store. Writes only
+`.weft/warpline/`. Schema `warpline.edge_snapshot.v1`.
 
 ```bash
 warpline capture-snapshot --repo /path/to/project --json
@@ -311,6 +311,24 @@ warpline capture-snapshot --repo /path/to/project --commit HEAD~3 --json
 
 With loomweave absent, returns `completeness: SKIPPED` and `source_version:
 no_index` — an honest "no edges captured," not an error.
+
+### `warpline verify-record`
+
+Record a local gate-pass verification event for a commit (advisory; warpline never gates).
+Writes only `.weft/warpline/`. Schema `warpline.verification_record.v1`. Idempotent on
+`(repo, commit, kind, source=warpline)`.
+
+```bash
+warpline verify-record --repo /path/to/project --commit HEAD --kind test_pass --json
+warpline verify-record --repo /path/to/project --commit HEAD --kind ci_pass --actor ci --json
+```
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--commit REF` | (required) | The commit ref (resolved to object SHA before storage). |
+| `--kind LABEL` | (required) | Free-form non-empty provenance label, e.g. `test_pass`, `ci_pass`, `gate_pass`. |
+| `--actor ID` | — | Optional string identifying who recorded the event. |
+| `--json` | off | Single-line JSON. |
 
 ---
 

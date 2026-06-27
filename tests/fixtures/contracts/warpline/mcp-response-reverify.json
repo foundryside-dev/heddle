@@ -11,6 +11,24 @@
   },
   "data": {
     "completeness": "NO_SNAPSHOT",
+    "impact_completeness": {
+      "status": "unknown",
+      "as_of": "2026-01-01T00:00:00+00:00",
+      "graph_fresh": false,
+      "graph_ref": null,
+      "depth_capped": false,
+      "unresolved_count": 0,
+      "reasons": ["no_snapshot"]
+    },
+    "risk_verification": {
+      "risk": "unavailable",
+      "reason_code": "completeness_partial",
+      "reason": {
+        "reason_class": "partial",
+        "cause": "impact completeness is 'unknown', not 'complete' (reasons: ['no_snapshot']); the impact set is narrowed/partial and is not authoritative",
+        "fix": "resolve the partial-coverage reasons (recapture a fresh graph, raise traversal depth, resolve unmapped entities) and regenerate the worklist"
+      }
+    },
     "staleness": {"snapshot_commit": null, "commits_behind": null},
     "resolved": [
       {
@@ -52,6 +70,13 @@
     "risk": "unavailable",
     "governance": "unavailable",
     "requirements": "unavailable"
+  },
+  "enrichment_reasons": {
+    "requirements": {
+      "reason_class": "disabled",
+      "cause": "the requirements dimension is reserved in the frozen enrichment vocab but no requirements-trace transport is wired in warpline yet",
+      "fix": "wire a requirements-trace consumer (e.g. a legis/requirements read keyed on the SEI) and populate enrichment.requirements; until then it is honestly reserved, not an earned-empty"
+    }
   },
   "meta": {
     "producer": {"tool": "warpline", "version": "0.1.0"},

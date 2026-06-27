@@ -112,6 +112,23 @@
       "authority_boundary": "Returns per-entity change timeline; reports sei_resolution only, never lineage."
     },
     {
+      "name": "verify_record",
+      "endorsed_name": "warpline_verification_record",
+      "shim": "verify_record",
+      "schema": "warpline.verification_record.v1",
+      "mutates": true,
+      "read_only": false,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [
+        ".weft/warpline/"
+      ],
+      "federation_dependencies": [],
+      "local_only": true,
+      "peer_side_effects": [],
+      "authority_boundary": "Records verification gate-pass events into .weft/warpline only; never mutates sibling repos. Advisory; warpline never gates."
+    },
+    {
       "name": "warpline_change_list",
       "endorsed_name": "warpline_change_list",
       "shim": "changed",
@@ -218,6 +235,23 @@
       "local_only": true,
       "peer_side_effects": [],
       "authority_boundary": "Returns reverify worklists; does not file work or govern changes."
+    },
+    {
+      "name": "warpline_verification_record",
+      "endorsed_name": "warpline_verification_record",
+      "shim": "verify_record",
+      "schema": "warpline.verification_record.v1",
+      "mutates": true,
+      "read_only": false,
+      "writes_local_state": true,
+      "idempotent": true,
+      "mutates_paths": [
+        ".weft/warpline/"
+      ],
+      "federation_dependencies": [],
+      "local_only": true,
+      "peer_side_effects": [],
+      "authority_boundary": "Records verification gate-pass events into .weft/warpline only; never mutates sibling repos. Advisory; warpline never gates."
     }
   ]
 }

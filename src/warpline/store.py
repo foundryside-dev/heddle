@@ -194,6 +194,35 @@ def _migrate_v3_co_change_pairs(conn: sqlite3.Connection) -> None:
     )
 
 
+def _migrate_v4_verification_events(conn: sqlite3.Connection) -> None:
+    """v4 (Rung 2 Track B): verification-freshness events.
+
+    ``verification_events`` records a per-commit gate-pass fact ("gate ``kind``
+    passed as-of commit ``commit_sha``"), one row per run — mirroring
+    ``change_events``. Freshness is computed at read time by git reachability
+    (is a change commit an ancestor-or-equal of a verified commit), never by
+    stamping every entity. Warpline OWNS this fact (its own gate result); it
+    mirrors no sibling. ``commit_sha`` is always a resolved object SHA, never a
+    symbolic ref. The UNIQUE key makes a re-record of the same (repo, commit,
+    kind, source) idempotent.
+    """
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS verification_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          repo_id TEXT NOT NULL,
+          commit_sha TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          verified_at TEXT NOT NULL,
+          actor TEXT,
+          source TEXT NOT NULL DEFAULT 'warpline',
+          UNIQUE(repo_id, commit_sha, kind, source)
+        )
+        """
+    )
+
+
 # Ordered, forward-only migrations. Each step's ``version`` is strictly greater
 # than the previous. v2 (anchor columns) lands in Rung 1b; v3 (co_change_pairs)
 # in Rung 2 Track A.
@@ -204,6 +233,7 @@ def _migrate_v3_co_change_pairs(conn: sqlite3.Connection) -> None:
 MIGRATIONS: list[Migration] = [
     Migration(version=2, apply=_migrate_v2_anchor_columns),
     Migration(version=3, apply=_migrate_v3_co_change_pairs),
+    Migration(version=4, apply=_migrate_v4_verification_events),
 ]
 
 # Highest schema version this build knows how to produce. Equals the base
@@ -217,6 +247,159 @@ def default_store_path(repo: Path, base_dir: Path | None = None) -> Path:
     root = repo.resolve()
     state = base_dir or root / ".weft" / "warpline"
     return state / "warpline.db"
+
+
+def store_repo_id(repo: Path) -> str:
+    """Stable per-repo store key (sha256 of the resolved root).
+
+    Single source of truth for the repo_id derivation used by both
+    ``WarplineStore._repo_id`` (the writer path) and ``read_store_binding`` (the
+    read-only probe), so the binding probe scopes its counts to the SAME repo the
+    writer keyed on.
+    """
+
+    return hashlib.sha256(str(repo.resolve()).encode("utf-8")).hexdigest()
+
+
+# Closed vocabulary for ``StoreBinding.status`` — mirrors warpline's other closed
+# vocabularies (enrichment, reason classes): an honest status is one of these,
+# never a free-form string. ``ok`` = present + readable + serveable schema;
+# ``store_absent`` = no DB file; ``store_unreadable`` = corrupt / no meta row /
+# unparseable; ``schema_ahead`` = written by a newer build than this one serves.
+STORE_STATUS_VOCAB = frozenset({"ok", "store_absent", "store_unreadable", "schema_ahead"})
+
+
+class StoreBinding(NamedTuple):
+    """Result of the read-only ``read_store_binding`` probe.
+
+    ``binding_ok`` is the federation-harness verdict: True iff the snapshot store
+    is present, readable, AND at a schema version THIS build can serve. The
+    load-bearing field is ``schema_version`` — READ from inside the store, with a
+    ``None`` sentinel whenever the store is absent, corrupt, or written by a newer
+    build than this binary can read (the stale-binary case). ``status`` is the
+    closed ``STORE_STATUS_VOCAB``.
+    """
+
+    present: bool
+    readable: bool
+    schema_version: int | None
+    snapshot_rev: str | None
+    change_event_count: int | None
+    binding_ok: bool
+    status: str
+    detail: str
+
+
+def _binding_unreadable(detail: str) -> StoreBinding:
+    return StoreBinding(
+        present=True,
+        readable=False,
+        schema_version=None,
+        snapshot_rev=None,
+        change_event_count=None,
+        binding_ok=False,
+        status="store_unreadable",
+        detail=detail,
+    )
+
+
+def read_store_binding(repo: Path, base_dir: Path | None = None) -> StoreBinding:
+    """Read-only binding/health probe for warpline's snapshot store.
+
+    Answers "can THIS warpline build read and SERVE the snapshot store for
+    ``repo``?" — the federation-attachment signal the Lacuna harness asserts on to
+    catch a stale-but-running warpline whose store schema moved out from under the
+    binary. Unlike ``WarplineStore.open`` (which mkdir's, ``executescript``'s the
+    base schema, and runs migrations — *creating* a store on first touch), this
+    NEVER creates or migrates snapshot STATE: an absent store reports absent (no
+    file is created), no rows are written, and the durable ``warpline.db`` is left
+    byte-for-byte unchanged. It opens the DB strictly read-only (``mode=ro``,
+    which also fails fast on a missing file rather than creating one) and reads
+    the schema version, a cheap change-event count, and the latest captured
+    snapshot rev directly.
+
+    Honest caveat: opening a PRESENT WAL-mode store read-only lets SQLite create
+    its transient coordination sidecars (``warpline.db-wal`` / ``-shm``) — these
+    are gitignored, not snapshot state, and ``mode=ro`` (over ``immutable=1``) is
+    deliberate so the probe always reads the latest COMMITTED schema version even
+    if a writer left un-checkpointed WAL frames (the stale-binary signal must not
+    itself read stale).
+    """
+
+    path = default_store_path(repo, base_dir)
+    if not path.is_file():
+        return StoreBinding(
+            present=False,
+            readable=False,
+            schema_version=None,
+            snapshot_rev=None,
+            change_event_count=None,
+            binding_ok=False,
+            status="store_absent",
+            detail=f"no warpline snapshot store at {path}; run capture_snapshot",
+        )
+
+    try:
+        conn = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        return _binding_unreadable(f"could not open snapshot store read-only: {exc}")
+
+    conn.row_factory = sqlite3.Row
+    try:
+        meta_row = conn.execute(
+            "SELECT value FROM meta WHERE key = 'schema_version'"
+        ).fetchone()
+        user_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        if meta_row is None:
+            return _binding_unreadable("snapshot store has no meta.schema_version row")
+        # The on-disk version is the canonical meta marker, floored by the
+        # PRAGMA user_version so a writer that bumped either signal is detected.
+        on_disk = max(int(meta_row["value"]), user_version)
+        if on_disk > HIGHEST_KNOWN_VERSION:
+            # The stale-binary case: a newer warpline wrote this store at a schema
+            # beyond what this build knows. warpline's own open() keeps reads
+            # "safe when ahead", but the harness question is narrower — "can THIS
+            # build SERVE it?" — and the honest answer is no.
+            return StoreBinding(
+                present=True,
+                readable=False,
+                schema_version=None,
+                snapshot_rev=None,
+                change_event_count=None,
+                binding_ok=False,
+                status="schema_ahead",
+                detail=(
+                    f"on-disk schema {on_disk} exceeds the highest version this "
+                    f"build serves ({HIGHEST_KNOWN_VERSION}); this warpline is older "
+                    f"than the writer and cannot serve the store"
+                ),
+            )
+        repo_id = store_repo_id(repo)
+        count = int(
+            conn.execute(
+                "SELECT COUNT(*) FROM change_events WHERE repo_id = ?", (repo_id,)
+            ).fetchone()[0]
+        )
+        snap_row = conn.execute(
+            "SELECT commit_sha FROM edge_snapshots WHERE repo_id = ? "
+            "ORDER BY id DESC LIMIT 1",
+            (repo_id,),
+        ).fetchone()
+        snapshot_rev = str(snap_row["commit_sha"]) if snap_row is not None else None
+        return StoreBinding(
+            present=True,
+            readable=True,
+            schema_version=on_disk,
+            snapshot_rev=snapshot_rev,
+            change_event_count=count,
+            binding_ok=True,
+            status="ok",
+            detail=f"snapshot store readable and serveable at schema {on_disk}",
+        )
+    except (sqlite3.Error, ValueError, TypeError) as exc:
+        return _binding_unreadable(f"snapshot store unreadable: {exc}")
+    finally:
+        conn.close()
 
 
 def _ensure_store_gitignore(store_dir: Path) -> None:
@@ -298,7 +481,7 @@ def _schema_presence_floor(conn: sqlite3.Connection, claimed: int) -> int:
 
     - Every checkable (≤ HIGHEST_KNOWN) object is present → the marker is TRUSTED
       and ``claimed`` is returned UNCHANGED. A genuinely-newer DB (``claimed`` >
-      HIGHEST_KNOWN whose extra v(N>3) objects we cannot enumerate) keeps its
+      HIGHEST_KNOWN whose extra v(N>4) objects we cannot enumerate) keeps its
       ahead marker so the ``> HIGHEST_KNOWN`` branch still fires SCHEMA_VERSION_AHEAD.
     - ``claimed`` below a check simply skips that check.
 
@@ -316,6 +499,11 @@ def _schema_presence_floor(conn: sqlite3.Connection, claimed: int) -> int:
         if not _table_exists(conn, "co_change_pairs"):
             return floor
         floor = 3
+    # v4 (Rung 2 Track B): the verification_events table.
+    if claimed >= 4:
+        if not _table_exists(conn, "verification_events"):
+            return floor
+        floor = 4
     # All checkable objects present: trust the marker as-is (never DOWNGRADE a
     # legitimately-ahead version we simply cannot fully verify).
     return claimed
@@ -488,7 +676,7 @@ class WarplineStore:
         return int(row["value"])
 
     def _repo_id(self, repo: Path) -> str:
-        return hashlib.sha256(str(repo.resolve()).encode("utf-8")).hexdigest()
+        return store_repo_id(repo)
 
     def ensure_repo(self, repo: Path) -> str:
         repo_id = self._repo_id(repo)
@@ -999,6 +1187,93 @@ class WarplineStore:
              ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
             """,
             params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_verification_event(
+        self,
+        *,
+        repo_id: str,
+        commit_sha: str,
+        kind: str,
+        verified_at: str,
+        actor: str | None,
+        source: str = "warpline",
+    ) -> bool:
+        """Record one gate-pass fact. Idempotent on (repo, commit, kind, source).
+
+        Returns True if a NEW row was inserted, False if an identical event
+        already existed (the ``INSERT OR IGNORE`` was a no-op). This gives the
+        verb an O(1), race-free idempotency signal without a second table scan.
+        ``commit_sha`` must be a resolved object SHA (the caller resolves the ref).
+        """
+
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO verification_events(
+              repo_id, commit_sha, kind, verified_at, actor, source
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (repo_id, commit_sha, kind, verified_at, actor, source),
+        )
+        inserted = cursor.rowcount > 0
+        self.conn.commit()
+        return inserted
+
+    def list_verification_events(self, repo: Path) -> list[dict[str, object]]:
+        """All verification events for ``repo``, ordered oldest-first by verified_at.
+
+        ``verified_at`` is ISO-8601 written by the verb. We do NOT lexical-sort:
+        a caller-supplied ``now`` could carry a non-UTC offset, and a
+        chronologically-later ``...-04:00`` value sorts lexically BEFORE a UTC
+        ``...+00:00`` one — which would corrupt ``compose_verification_freshness``'s
+        most-recent-covering-event identification. So we normalize to the UTC
+        instant with ``datetime()`` (mirroring ``list_change_events`` at
+        ``store.py:~999``), and COALESCE back to the raw string so a value
+        ``datetime()`` cannot parse still sorts deterministically by its lexical
+        form rather than vanishing. ``id`` is the final tiebreak.
+        """
+
+        repo_id = self._repo_id(repo)
+        rows = self.conn.execute(
+            """
+            SELECT commit_sha, kind, verified_at, actor, source
+              FROM verification_events
+             WHERE repo_id = ?
+             ORDER BY COALESCE(datetime(verified_at), verified_at), id
+            """,
+            (repo_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_change_events_for_key_ids(
+        self, repo: Path, key_ids: list[int]
+    ) -> list[dict[str, object]]:
+        """Change events filtered to ``key_ids`` (reverify's verification path).
+
+        Pushes the entity filter into SQL (``WHERE ce.entity_key_id IN (...)``)
+        so reverify does not full-table-scan every change event in the repo just
+        to group commits by the handful of entities in the worklist. Empty
+        ``key_ids`` short-circuits to ``[]``. Returns the same row shape as
+        ``list_change_events`` (carries ``entity_key_id``, ``commit_sha``,
+        ``changed_at``), ordered oldest-first by the normalized ``changed_at``
+        instant then ``id`` so callers can take the latest change as the last row.
+        """
+
+        if not key_ids:
+            return []
+        repo_id = self._repo_id(repo)
+        unique_ids = sorted(set(key_ids))
+        placeholders = ",".join("?" for _ in unique_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT ce.commit_sha, ce.changed_at, ce.entity_key_id
+              FROM change_events ce
+             WHERE ce.repo_id = ?
+               AND ce.entity_key_id IN ({placeholders})
+             ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
+            """,
+            (repo_id, *unique_ids),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1539,6 +1814,28 @@ class WarplineStore:
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
+
+    def get_edge_snapshot(
+        self, repo_id: str, commit_sha: str, source: str
+    ) -> dict[str, object] | None:
+        """Fetch the snapshot row for an exact ``(repo, commit, source)`` key.
+
+        The UPSERT key is ``(repo_id, commit_sha, source)``, so this returns the
+        at-most-one row that a recapture for that triple would overwrite — the
+        precondition the loomweave-absent path needs to decide whether a usable
+        prior already exists (vs. ``latest_snapshot``, which is repo-latest by id
+        and answers a different question).
+        """
+
+        row = self.conn.execute(
+            """
+            SELECT id, commit_sha, source, source_version, captured_at, completeness
+              FROM edge_snapshots
+             WHERE repo_id = ? AND commit_sha = ? AND source = ?
+            """,
+            (repo_id, commit_sha, source),
+        ).fetchone()
+        return dict(row) if row is not None else None
 
     def latest_snapshot(self, repo: Path) -> dict[str, object] | None:
         repo_id = self._repo_id(repo)

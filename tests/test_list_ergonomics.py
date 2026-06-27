@@ -450,7 +450,7 @@ def test_reason_clean_omits_cause_and_fix() -> None:
 def test_reason_nonclean_requires_cause_and_fix() -> None:
     carrier = reason("partial", cause="capped", fix="raise the cap")
     assert carrier == {"reason_class": "partial", "cause": "capped", "fix": "raise the cap"}
-    with pytest.raises(AssertionError):
+    with pytest.raises(ValueError):
         reason("partial")  # missing cause/fix
 
 

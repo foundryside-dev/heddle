@@ -14,7 +14,7 @@ from warpline.errors import (
     MissingRequiredFieldError,
     WarplineError,
 )
-from warpline.federation import WardlineDossierClient
+from warpline.federation import LegisGovernanceClient, WardlineDossierClient
 from warpline.siblings import FiligreeWorkClient
 
 CORE_OUTPUT_SCHEMA = {
@@ -210,6 +210,12 @@ TOOL_SPECS = [
             # with no transport is honestly ``disabled``, never silently dropped —
             # so this is a kept promise, not a re-advertised-dead field.
             "include_federation": {"type": "boolean"},
+            # attest_bundle: a PUSHED, UNTRUSTED wardline-attest-2 bundle (the JSON
+            # object). When supplied, data.risk_verification reads proven-good iff a
+            # complete worklist's every affected entity is attested clean at its
+            # current body (mechanical (commit, content_hash) equality; the HMAC is
+            # NOT verified by warpline). Absent/partial/unmatched stays unavailable.
+            "attest_bundle": {"type": "object"},
         },
         required=["repo"],
         metadata=_READ_META_LW,
@@ -238,6 +244,57 @@ TOOL_SPECS = [
             idempotent=True,
             mutates_paths=[".weft/warpline/"],
             federation_dependencies=["loomweave"],
+        ),
+    ),
+    _tool_spec(
+        endorsed="warpline_verification_record",
+        shim="verify_record",
+        schema=commands.SCHEMA_VERIFICATION_RECORD,
+        description=(
+            "Record a verification (gate-pass) for a commit, e.g. test_pass. Mutates ONLY "
+            ".weft/warpline state; never a sibling repo. Advisory; warpline never gates."
+        ),
+        input_properties={
+            "commit": {"type": "string"},
+            "kind": {"type": "string"},
+            "actor": {"type": ["string", "null"]},
+        },
+        required=["repo", "commit", "kind"],
+        metadata=_metadata(
+            read_only=False,
+            writes_local_state=True,
+            idempotent=True,
+            mutates_paths=[".weft/warpline/"],
+            federation_dependencies=[],
+        ),
+    ),
+    _tool_spec(
+        endorsed="warpline_project_status_get",
+        shim="project_status",
+        schema=commands.SCHEMA_PROJECT_STATUS,
+        description=(
+            "Read-only store-binding/health probe: reports whether THIS warpline build can "
+            "read and SERVE the snapshot store for the given repo (binding_ok), reading "
+            "schema_version from INSIDE the store. warpline is repo-per-call, bound to nothing "
+            "at launch — this is a can-service-R check, never a launch-time binding. Creates and "
+            "migrates NOTHING; an absent store is reported absent."
+        ),
+        input_properties={},
+        required=["repo"],
+        # GENUINELY read-only: unlike the other read tools (which lazily open —
+        # and thus initialize/migrate — the store, hence writes_local_state), this
+        # probe writes NO durable snapshot state: no DB is created for an absent
+        # store, no rows are written, and warpline.db is left byte-for-byte
+        # unchanged. mutates_paths=[] names that durable-state surface (opening a
+        # present WAL store read-only may still spawn gitignored SQLite -wal/-shm
+        # coordination sidecars, which are not snapshot state). It is the first
+        # tool with writes_local_state=False / mutates_paths=[].
+        metadata=_metadata(
+            read_only=True,
+            writes_local_state=False,
+            idempotent=True,
+            mutates_paths=[],
+            federation_dependencies=[],
         ),
     ),
 ]
@@ -396,11 +453,19 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
     include_federation = bool(args.get("include_federation", False))
     # When the caller asks for federation, build the REAL read-only clients for
     # the members that have a transport. filigree (entity-association reverse
-    # lookup) and wardline (`dossier` findings) are wired; legis has no per-entity
-    # CLI read transport yet, so legis_client stays None and the federation block
-    # surfaces it as ``disabled`` with a recruiting fix (never faked).
+    # lookup) and wardline (`dossier` findings) are always wired. legis is
+    # CAPABILITY-GATED: its LegisGovernanceClient is wired only when the installed
+    # legis advertises the `governance-read` verb (governance_read.v1). When the
+    # read surface is absent the verb genuinely does not exist, so the honest
+    # posture is ``disabled`` (capability absent) rather than a forced
+    # ``unreachable`` — and the client lights up automatically once legis ships it.
     work_client = FiligreeWorkClient(repo) if include_federation else None
     risk_client = WardlineDossierClient(repo) if include_federation else None
+    legis_client = (
+        LegisGovernanceClient(repo)
+        if include_federation and LegisGovernanceClient.available(repo)
+        else None
+    )
     return commands.reverify_worklist(
         repo,
         _key_ids_arg(args),
@@ -416,7 +481,8 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
         work_client=work_client,
         include_federation=include_federation,
         risk_client=risk_client,
-        legis_client=None,
+        legis_client=legis_client,
+        attest_bundle=args.get("attest_bundle"),
     )
 
 
@@ -433,10 +499,32 @@ def _h_capture(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _h_verify_record(args: dict[str, Any]) -> dict[str, Any]:
+    return commands.verify_record(
+        _repo_arg(args),
+        commit=str(args.get("commit", "")),
+        kind=str(args.get("kind", "")),
+        actor=_opt_str(args, "actor"),
+    )
+
+
+def _h_project_status(args: dict[str, Any]) -> dict[str, Any]:
+    return commands.project_status(_repo_arg(args))
+
+
 _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 for _spec, _handler in zip(
     TOOL_SPECS,
-    [_h_change_list, _h_timeline, _h_churn, _h_impact, _h_reverify, _h_capture],
+    [
+        _h_change_list,
+        _h_timeline,
+        _h_churn,
+        _h_impact,
+        _h_reverify,
+        _h_capture,
+        _h_verify_record,
+        _h_project_status,
+    ],
     strict=True,
 ):
     _HANDLERS[_spec["endorsed"]] = _handler
@@ -503,6 +591,7 @@ _HANDLER_CONSUMES: dict[str, frozenset[str]] = {
             "cursor",
             "limit",
             "include_federation",
+            "attest_bundle",
         }
     ),
     # capture honors or loudly rejects EVERY advertised field: no fast-follow
@@ -519,6 +608,9 @@ _HANDLER_CONSUMES: dict[str, frozenset[str]] = {
             "idempotency_key",
         }
     ),
+    "warpline_verification_record": frozenset({"repo", "commit", "kind", "actor"}),
+    # The binding probe consumes only repo (the standard _repo_arg contract).
+    "warpline_project_status_get": frozenset({"repo"}),
 }
 
 # The fast-follow placeholder set is EMPTY for every tool: there is no
@@ -535,6 +627,8 @@ _KNOWN_FASTFOLLOW_DEAD: dict[str, frozenset[str]] = {
     "warpline_impact_radius_get": frozenset(),
     "warpline_reverify_worklist_get": frozenset(),
     "warpline_edge_snapshot_capture": frozenset(),
+    "warpline_verification_record": frozenset(),
+    "warpline_project_status_get": frozenset(),
 }
 
 
