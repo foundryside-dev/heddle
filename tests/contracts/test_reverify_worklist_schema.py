@@ -173,6 +173,58 @@ def _matching_bundle(commit: str, sei: str, content_hash: str) -> dict:
     }
 
 
+def test_reverify_path_reads_proven_good_through_the_full_envelope(tmp_path, monkeypatch) -> None:
+    # The feature's whole point, exercised through reverify_worklist + build_envelope
+    # (not just the pure consumer). TWO complete-worklist entities with limit=1 so
+    # one falls OFF page 1 — this is the regression guard for the paged-vs-full
+    # sei->locator bug: proven is all-or-nothing over the FULL set, so if the
+    # content_hash map were built from the paged items the off-page entity would be
+    # unmatched and this could never read proven.
+    from warpline import commands
+
+    repo = _repo(tmp_path)
+    head = _git(repo, "rev-parse", "HEAD")
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        a = store.ensure_entity_key(
+            repo_id, locator="python:function:m.py::a", sei="loomweave:eid:aaaa", commit_sha=head
+        )
+        b = store.ensure_entity_key(
+            repo_id, locator="python:function:m.py::b", sei="loomweave:eid:bbbb", commit_sha=head
+        )
+        store.create_edge_snapshot(repo_id, head, "loomweave", "t", "FULL")  # complete, no edges
+
+    match = "deadbeefmatchingbodyhash"
+    # Deterministic loomweave: every locator's current body hash is `match`.
+    monkeypatch.setattr(commands, "resolve_content_hash_for_locator", lambda _c, _loc: match)
+    bundle = {
+        "schema": "wardline-attest-2",
+        "payload": {
+            "commit": head, "dirty": False, "attested_at": "2026-06-27",
+            "sei_source": "loomweave", "posture": {},
+            "boundaries": [
+                {"qualname": "a", "sei": "loomweave:eid:aaaa", "content_hash": match,
+                 "verdict": "clean", "tier": "T"},
+                {"qualname": "b", "sei": "loomweave:eid:bbbb", "content_hash": match,
+                 "verdict": "clean", "tier": "T"},
+            ],
+        },
+        "signature": {"alg": "HMAC-SHA256", "value": "x", "key_id": "y"},
+    }
+    env = commands.reverify_worklist(repo, [a, b], depth=2, limit=1, attest_bundle=bundle)
+    _validate(env)  # well-formed through build_envelope
+    rv = env["data"]["risk_verification"]
+    assert rv["risk"] == "proven", rv
+    assert rv["reason_code"] == "attested_clean"
+    assert rv["authority"] == "wardline"
+    assert rv["signature_verified"] is False
+    assert rv["matched"] == rv["affected"] == 2  # BOTH entities, despite limit=1
+    # the clean carrier rides inside data.risk_verification; the envelope is still
+    # honest (enrichment_reasons unaffected — warpline declared no clean of its own).
+    assert env["ok"] is True
+    assert env["enrichment_reasons"]["requirements"]["reason_class"] == "disabled"
+
+
 def test_reverify_path_consumes_bundle_honestly_without_loomweave(tmp_path: Path) -> None:
     # A bundle IS supplied and the worklist is complete, but loomweave is
     # unreachable (bad command) -> warpline cannot fetch the current content_hash,

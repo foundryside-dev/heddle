@@ -667,22 +667,18 @@ def _lazy_capture_if_missing(
 def _attest_content_hashes(
     repo: Path,
     affected_seis: list[str],
-    items: list[dict[str, Any]],
+    sei_to_locator: dict[str, str],
     loomweave_command: str | None,
 ) -> dict[str, str]:
     """Build ``{sei: current content_hash}`` for the worklist's affected SEIs via
-    loomweave, for the risk-as-verification consult. Fail-soft and read-only: an
-    unreachable loomweave (or an unresolvable entity) yields no hash for that SEI,
-    so the attest consumer honestly leaves it unmatched (``attestation_incomplete``)
-    — NEVER a faked-good match. Only called when an attest bundle was supplied."""
+    loomweave, for the risk-as-verification consult. ``sei_to_locator`` is built by
+    the caller from the FULL (pre-page) worklist set, so a > limit worklist still
+    resolves every affected entity. Fail-soft and read-only: an unreachable
+    loomweave (or an unresolvable entity) yields no hash for that SEI, so the attest
+    consumer honestly leaves it unmatched (``attestation_incomplete``) — NEVER a
+    faked-good match. One ``entity_resolve`` round trip per SEI (batching is a clean
+    later optimization); only paid when an attest bundle was supplied."""
 
-    sei_to_locator: dict[str, str] = {}
-    for it in items:
-        entity = it.get("entity", {})
-        sei = entity.get("sei")
-        loc = entity.get("locator")
-        if isinstance(sei, str) and sei and isinstance(loc, str) and loc:
-            sei_to_locator.setdefault(sei, loc)
     by_sei: dict[str, str] = {}
     try:
         command = loomweave_command or os.environ.get("WARPLINE_LOOMWEAVE_COMMAND", "loomweave")
@@ -919,14 +915,23 @@ def reverify_worklist(
         }
         # Risk-as-verification (Rung 2): the SEIs of the FULL filtered+sorted set
         # (pre-page, like verification_summary) — the verdict describes the whole
-        # change's worklist, never a single page. Deduped, order-preserving.
+        # change's worklist, never a single page. Deduped, order-preserving. The
+        # sei->locator map is captured HERE, from the full set, NOT from the
+        # post-apply_page `items` below — otherwise an affected entity that fell off
+        # page 1 would have no locator, no content_hash, and a > limit worklist
+        # could never read proven-good even when the bundle attests every entity.
         affected_seis: list[str] = []
+        affected_sei_locators: dict[str, str] = {}
         _seen_seis: set[str] = set()
         for it in items:
-            sei = it.get("entity", {}).get("sei")
+            entity = it.get("entity", {})
+            sei = entity.get("sei")
             if isinstance(sei, str) and sei and sei not in _seen_seis:
                 _seen_seis.add(sei)
                 affected_seis.append(sei)
+                loc = entity.get("locator")
+                if isinstance(loc, str) and loc:
+                    affected_sei_locators[sei] = loc
         # group_by buckets the FULL filtered+sorted list (the grouped view is a
         # complete projection, not a page); the flat list still paginates.
         grouped = apply_group_by(items, tool="warpline_reverify_worklist_get", group_by=group_by)
@@ -984,7 +989,7 @@ def reverify_worklist(
         # only paid when a bundle is supplied — an unreachable loomweave yields no
         # hashes, so every entity is honestly unmatched, never faked-good).
         content_hash_by_sei = (
-            _attest_content_hashes(repo, affected_seis, items, loomweave_command)
+            _attest_content_hashes(repo, affected_seis, affected_sei_locators, loomweave_command)
             if attest_bundle is not None
             else {}
         )
