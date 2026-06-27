@@ -11,6 +11,25 @@ is a new contract URI, never a mutation of `v1`.
 ## [Unreleased]
 
 ### Added
+- **legis governance read consumer (`governance_read.v1`).** `reverify
+  --include_federation` now lights up the previously-inert `legis` member with a
+  real `LegisGovernanceClient` over the `legis governance-read <SEI> --json` verb,
+  consuming legis's authoritative `governance_read.v1` (verified clearances only:
+  operator override / cleared sign-off). Mirrored as the source of truth at
+  `contracts/governance_read.v1.schema.json` (legis OWNS it; warpline echoes
+  advisorily and NEVER gates — `GV-LG-1`, no `governance_verdict` in output). The
+  clearance `content_hash` is echoed verbatim, NOT re-derived against the current
+  body (governance is an echo, not a warpline-asserted verdict — contrast the
+  attest-2 path). Honesty: an empty read is `governance: absent` = "no verified
+  clearance," which deliberately conflates *ungoverned*, *unknown-SEI*, and an
+  entity **actively BLOCKED awaiting sign-off** — so `absent` is never
+  "ungoverned" (disclosed in the schema + the federation reference docs). Wiring
+  is **capability-gated**: the client is wired only when the installed legis
+  advertises `governance-read`; until then the member is honestly `disabled`
+  (capability absent), not a forced `unreachable`, and lights up automatically
+  once legis ships the verb. The `governance_read.v1` schema vectors are the
+  contract's canonical samples, not a live capture (the read surface is unshipped
+  at time of writing).
 - **Risk-as-verification: wardline-attest-2 consumer (Rung 2).** Closes the
   `verification_source_absent` gap D1 left open. warpline now consumes a PUSHED,
   UNTRUSTED `wardline-attest-2` evidence bundle and, for a worklist whose impact

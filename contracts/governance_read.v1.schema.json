@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://weft.dev/contracts/governance_read.v1.schema.json",
+  "title": "legis governance_read.v1",
+  "description": "PROVENANCE: legis OWNS this contract (legis is the governance authority); warpline mirrors it VERBATIM as the source of truth for its advisory LegisGovernanceClient consumer and NEVER gates on it. v1 reports VERIFIED GOVERNANCE CLEARANCES ONLY, keyed on SEI: an operator-override verdict (OVERRIDDEN_BY_OPERATOR) or a sign-off an operator cleared, each signed. It deliberately does NOT report in-flight/uncleared governance: open (PENDING) sign-off requests, BLOCKED verdicts awaiting an operator, or Filigree bindings. CONSEQUENCE warpline must disclose, not hide: records:[] under status:checked means 'legis holds no verified CLEARANCE for this SEI' — which conflates three distinct states legis cannot tell apart (truly ungoverned; a known SEI with a clearance never recorded; AND an entity actively BLOCKED awaiting sign-off). So an actively-blocked entity is byte-identical to an ungoverned one in this channel. warpline therefore renders [] as enrichment.governance=absent meaning 'no verified clearance', NEVER 'ungoverned'. Only Loomweave can say a SEI does not exist; legis is an SEI consumer and cannot. Contract is additive within v1; any incompatible change bumps to .v2.",
+  "type": "object",
+  "required": ["status", "sei", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "description": "Envelope-level read status. 'checked' = legis answered (records may be empty); 'unavailable' = legis could not produce a signature-verifiable answer (tampered/unverifiable trail). NOT a verdict, NOT warpline's enrichment scalar.",
+      "enum": ["checked", "unavailable"]
+    },
+    "sei": { "type": "string", "minLength": 1 },
+    "records": {
+      "description": "The verified clearance records for this SEI. Empty = no verified clearance (see PROVENANCE: this is NOT 'ungoverned' and may hide an actively-blocked entity).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/clearance_record" }
+    },
+    "unavailable": {
+      "description": "Present (and non-empty) only when status='unavailable': the machine reason(s) legis could not answer.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["reason"],
+        "additionalProperties": false,
+        "properties": { "reason": { "type": "string" } }
+      }
+    }
+  },
+  "$defs": {
+    "clearance_record": {
+      "type": "object",
+      "required": [
+        "sei",
+        "disposition",
+        "posture",
+        "authority",
+        "as_of",
+        "reasons",
+        "content_hash"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sei": { "type": "string", "minLength": 1 },
+        "disposition": {
+          "description": "Record-level: a v1 record is ALWAYS a clearance. (NOT the envelope status, NOT warpline's enrichment.governance scalar.)",
+          "enum": ["cleared"]
+        },
+        "posture": {
+          "description": "The PROVABLE clearance mechanism: a protected-cell operator override, or an operator-cleared sign-off.",
+          "enum": ["protected_override", "operator_signoff"]
+        },
+        "authority": { "enum": ["operator"] },
+        "as_of": {
+          "description": "Signed recorded_at (RFC3339 UTC; both +00:00 and Z accepted).",
+          "type": "string",
+          "format": "date-time"
+        },
+        "reasons": {
+          "description": "Closed-vocab kind codes for the clearance.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["operator_override", "signoff_cleared"] }
+        },
+        "content_hash": {
+          "description": "The signed Loomweave content hash binding the clearance to the governed content. warpline ECHOES this verbatim; it is NOT re-derived against the current body (governance is an advisory echo, not a warpline-asserted freshness verdict — contrast the attest-2 risk-as-verification path).",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

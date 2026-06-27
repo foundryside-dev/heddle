@@ -14,7 +14,7 @@ from warpline.errors import (
     MissingRequiredFieldError,
     WarplineError,
 )
-from warpline.federation import WardlineDossierClient
+from warpline.federation import LegisGovernanceClient, WardlineDossierClient
 from warpline.siblings import FiligreeWorkClient
 
 CORE_OUTPUT_SCHEMA = {
@@ -424,11 +424,19 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
     include_federation = bool(args.get("include_federation", False))
     # When the caller asks for federation, build the REAL read-only clients for
     # the members that have a transport. filigree (entity-association reverse
-    # lookup) and wardline (`dossier` findings) are wired; legis has no per-entity
-    # CLI read transport yet, so legis_client stays None and the federation block
-    # surfaces it as ``disabled`` with a recruiting fix (never faked).
+    # lookup) and wardline (`dossier` findings) are always wired. legis is
+    # CAPABILITY-GATED: its LegisGovernanceClient is wired only when the installed
+    # legis advertises the `governance-read` verb (governance_read.v1). When the
+    # read surface is absent the verb genuinely does not exist, so the honest
+    # posture is ``disabled`` (capability absent) rather than a forced
+    # ``unreachable`` — and the client lights up automatically once legis ships it.
     work_client = FiligreeWorkClient(repo) if include_federation else None
     risk_client = WardlineDossierClient(repo) if include_federation else None
+    legis_client = (
+        LegisGovernanceClient(repo)
+        if include_federation and LegisGovernanceClient.available(repo)
+        else None
+    )
     return commands.reverify_worklist(
         repo,
         _key_ids_arg(args),
@@ -444,7 +452,7 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
         work_client=work_client,
         include_federation=include_federation,
         risk_client=risk_client,
-        legis_client=None,
+        legis_client=legis_client,
         attest_bundle=args.get("attest_bundle"),
     )
 

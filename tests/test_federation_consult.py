@@ -133,6 +133,132 @@ def test_transport_blockers_name_the_missing_members() -> None:
     )
     members = {b["member"] for b in blockers}
     assert members == set(FEDERATION_MEMBERS)
-    # legis blocker names the precise gap (no per-entity CLI read).
+    # legis blocker still names governance (the advisor pinned this), now recruiting
+    # an install/upgrade rather than a not-yet-built transport.
     legis = next(b for b in blockers if b["member"] == "legis")
     assert "governance" in legis["need"]
+
+
+# --------------------------------------------------------------------------- legis
+_CLEARED = {
+    "sei": "loomweave:eid:x",
+    "disposition": "cleared",
+    "posture": "protected_override",
+    "authority": "operator",
+    "as_of": "2026-06-27T14:02:11Z",
+    "reasons": ["operator_override"],
+    "content_hash": "b3:9f2ce7",
+}
+
+
+class _FakeLegis:
+    """A LegisClient stand-in: ``governance_for_sei`` returns canned records."""
+
+    def __init__(self, records: list[dict[str, Any]]) -> None:
+        self._records = records
+
+    def governance_for_sei(self, sei: str) -> list[dict[str, Any]]:
+        return self._records
+
+
+def test_legis_with_clearances_is_clean_and_carries_records() -> None:
+    items = [{"entity": {"locator": "python:function:a.py::a", "sei": "loomweave:eid:x"}}]
+    fed = consult_federation(items, legis_client=_FakeLegis([_CLEARED]))
+    assert fed["members"]["legis"]["weft_reason"]["reason_class"] == "clean"
+    entity = next(e for e in fed["entities"] if e["locator"] == "python:function:a.py::a")
+    assert entity["governance"] and entity["governance"][0]["disposition"] == "cleared"
+
+
+def test_legis_reachable_but_empty_is_clean_earned_empty() -> None:
+    items = [{"entity": {"locator": "python:function:a.py::a", "sei": "loomweave:eid:x"}}]
+    fed = consult_federation(items, legis_client=_FakeLegis([]))
+    # no verified clearance is an EARNED empty (clean), NOT disabled/unreachable —
+    # and NOT a claim of "ungoverned".
+    assert fed["members"]["legis"]["weft_reason"]["reason_class"] == "clean"
+    assert fed["members"]["legis"]["entity_count"] == 0
+
+
+def test_legis_raising_is_unreachable_not_empty() -> None:
+    items = [{"entity": {"locator": "python:function:a.py::a", "sei": "loomweave:eid:x"}}]
+
+    class Boom:
+        def governance_for_sei(self, sei: str) -> list[dict[str, Any]]:
+            raise RuntimeError("legis governance read exploded")
+
+    fed = consult_federation(items, legis_client=Boom())
+    wr = fed["members"]["legis"]["weft_reason"]
+    assert wr["reason_class"] == "unreachable"
+    assert "exploded" in wr["cause"] and wr["fix"]
+
+
+def test_disabled_legis_fix_recruits_install_not_build(tmp_path: Path) -> None:
+    # Once the LegisGovernanceClient EXISTS, the disabled fix can no longer say
+    # "wire a LegisClient" (that work is done) — it must recruit installing/upgrading
+    # legis to a version that exposes the governance-read surface.
+    repo, key = _seed_repo_with_entity(tmp_path, sei="loomweave:eid:x")
+    env = commands.reverify_worklist(repo, [key], depth=2, include_federation=True)
+    wr = env["data"]["federation"]["members"]["legis"]["weft_reason"]
+    assert wr["reason_class"] == "disabled"
+    assert "governance-read" in wr["fix"]
+    assert "wire a LegisClient" not in wr["fix"]
+
+
+# --------------------------------------------------------------------------- (acceptance 1)
+def test_reverify_through_command_lights_governance_present(tmp_path: Path) -> None:
+    repo, key = _seed_repo_with_entity(tmp_path, sei="loomweave:eid:x")
+    env = commands.reverify_worklist(
+        repo, [key], depth=2, include_federation=True, legis_client=_FakeLegis([_CLEARED])
+    )
+    assert env["data"]["federation"]["members"]["legis"]["weft_reason"]["reason_class"] == "clean"
+    assert env["enrichment"]["governance"] == "present"
+    item = env["data"]["items"][0]
+    assert item["enrichment"]["governance"][0]["disposition"] == "cleared"
+
+
+# --------------------------------------------------------------------------- (acceptance 3)
+def _find_key(node: Any, key: str) -> bool:
+    if isinstance(node, dict):
+        return key in node or any(_find_key(v, key) for v in node.values())
+    if isinstance(node, list):
+        return any(_find_key(v, key) for v in node)
+    return False
+
+
+def test_governance_is_advisory_never_gates_the_decision(tmp_path: Path) -> None:
+    """GV-LG-1: the legis echo MUST NOT move the reverify decision. Same repo, two
+    runs differing ONLY in the legis facts (a clearance vs none); the decision
+    substrate — verification_summary, risk_verification, impact_completeness,
+    item identity/order, resolved/unresolved — is byte-identical, and no
+    ``governance_verdict`` leaks anywhere in the envelope."""
+
+    repo, key = _seed_repo_with_entity(tmp_path, sei="loomweave:eid:x")
+    with_clearance = commands.reverify_worklist(
+        repo, [key], depth=2, include_federation=True, legis_client=_FakeLegis([_CLEARED])
+    )
+    without = commands.reverify_worklist(
+        repo, [key], depth=2, include_federation=True, legis_client=_FakeLegis([])
+    )
+    # the advisory scalar DID flip (the signal is real)...
+    assert with_clearance["enrichment"]["governance"] == "present"
+    assert without["enrichment"]["governance"] == "absent"
+    # ...but NOTHING in the decision substrate moved (as_of is a per-call wall-clock
+    # producer timestamp, inherently different between two runs — strip it).
+    def _decision(env: dict[str, Any]) -> dict[str, Any]:
+        ic = {k: v for k, v in env["data"]["impact_completeness"].items() if k != "as_of"}
+        return {
+            "verification_summary": env["data"]["verification_summary"],
+            "risk_verification": env["data"]["risk_verification"],
+            "impact_completeness": ic,
+            "resolved": env["data"]["resolved"],
+            "unresolved": env["data"]["unresolved"],
+        }
+
+    assert _decision(with_clearance) == _decision(without)
+    assert [i["entity"]["locator"] for i in with_clearance["data"]["items"]] == [
+        i["entity"]["locator"] for i in without["data"]["items"]
+    ]
+    # governance never masquerades as a verdict.
+    assert not _find_key(with_clearance, "governance_verdict")
+    # and it never leaks into the verification posture.
+    assert not _find_key(with_clearance["data"]["risk_verification"], "governance")
+    assert not _find_key(with_clearance["data"]["impact_completeness"], "governance")
