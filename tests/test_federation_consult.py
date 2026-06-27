@@ -262,3 +262,24 @@ def test_governance_is_advisory_never_gates_the_decision(tmp_path: Path) -> None
     # and it never leaks into the verification posture.
     assert not _find_key(with_clearance["data"]["risk_verification"], "governance")
     assert not _find_key(with_clearance["data"]["impact_completeness"], "governance")
+
+
+def test_h_reverify_capability_gated_wiring_lights_governance(tmp_path: Path, monkeypatch) -> None:
+    """The MCP handler's capability-gated construction, end-to-end: when legis
+    advertises the verb and returns a clearance, ``_h_reverify`` emits
+    ``governance: present`` (filigree/wardline have no transport here and degrade
+    independently — governance is unaffected)."""
+
+    from warpline import mcp
+    from warpline.federation import LegisGovernanceClient
+
+    repo, key = _seed_repo_with_entity(tmp_path, sei="loomweave:eid:x")
+    monkeypatch.setattr(LegisGovernanceClient, "available", classmethod(lambda cls, repo: True))
+    monkeypatch.setattr(
+        LegisGovernanceClient, "governance_for_sei", lambda self, sei: [_CLEARED]
+    )
+    env = mcp._h_reverify(
+        {"repo": str(repo), "changed_entity_key_ids": [key], "depth": 2, "include_federation": True}
+    )
+    assert env["enrichment"]["governance"] == "present"
+    assert env["data"]["federation"]["members"]["legis"]["weft_reason"]["reason_class"] == "clean"
