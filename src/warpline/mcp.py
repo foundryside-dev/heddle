@@ -390,6 +390,13 @@ def _opt_str(args: dict[str, Any], key: str) -> str | None:
     return value if isinstance(value, str) else None
 
 
+def _required_str(args: dict[str, Any], key: str, message: str) -> str:
+    value = args.get(key)
+    if not isinstance(value, str):
+        raise MissingRequiredFieldError(message, rejected_field=key)
+    return value
+
+
 def _h_change_list(args: dict[str, Any]) -> dict[str, Any]:
     return commands.change_list(
         _repo_arg(args),
@@ -502,8 +509,12 @@ def _h_capture(args: dict[str, Any]) -> dict[str, Any]:
 def _h_verify_record(args: dict[str, Any]) -> dict[str, Any]:
     return commands.verify_record(
         _repo_arg(args),
-        commit=str(args.get("commit", "")),
-        kind=str(args.get("kind", "")),
+        commit=_required_str(args, "commit", "commit must be a non-empty ref or SHA"),
+        kind=_required_str(
+            args,
+            "kind",
+            "kind must be a non-empty verification label, e.g. test_pass",
+        ),
         actor=_opt_str(args, "actor"),
     )
 

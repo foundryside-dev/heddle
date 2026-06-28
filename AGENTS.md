@@ -119,7 +119,8 @@ Two failure modes deserve a specific response:
   the actual intent.
 <!-- /filigree:instructions -->
 
-<!-- loomweave:instructions:v1.1.0-rc5:0f47ea4d -->
+<!-- loomweave:instructions:v1.3.1:ca999d34 -->
+<!-- loomweave:last-writer:loomweave install -->
 ## Loomweave (code archaeology)
 
 This repo is indexed by Loomweave: it has pre-extracted the tree into a

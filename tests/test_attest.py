@@ -152,6 +152,22 @@ def test_dirty_tree_attestation_refused() -> None:
     assert verdict["reason_code"] == "attestation_dirty"
 
 
+def test_missing_dirty_flag_is_not_treated_as_clean() -> None:
+    bundle = _bundle(boundaries=[_boundary(SEI_A, HASH_A)])
+    del bundle["payload"]["dirty"]
+
+    verdict = _risk(
+        impact_completeness=_COMPLETE,
+        affected_seis=[SEI_A],
+        bundle=bundle,
+        current_commit=COMMIT,
+        content_hash_for_sei=_hashes({SEI_A: HASH_A}),
+    )
+
+    assert verdict["risk"] == "unavailable"
+    assert verdict["reason_code"] == "attestation_dirty"
+
+
 def test_null_commit_cannot_pin() -> None:
     verdict = _risk(
         impact_completeness=_COMPLETE,

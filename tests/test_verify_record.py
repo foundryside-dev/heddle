@@ -146,6 +146,32 @@ def test_verify_record_empty_commit_raises_missing_required_field(tmp_path: Path
     assert data["rejected_field"] == "commit"
 
 
+def test_mcp_verify_record_rejects_non_string_kind_without_writing(tmp_path: Path) -> None:
+    from warpline import mcp
+
+    repo, _ = _git_repo(tmp_path)
+
+    response = mcp.dispatch(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "warpline_verification_record",
+                "arguments": {"repo": str(repo), "commit": "HEAD", "kind": None},
+            },
+        }
+    )
+
+    assert response["error"]["code"] == -32602
+    data = response["error"]["data"]
+    assert data["schema"] == "warpline.error.v1"
+    assert data["error_code"] == "missing_required_field"
+    assert data["rejected_field"] == "kind"
+    with WarplineStore.open(default_store_path(repo)) as store:
+        assert store.list_verification_events(repo) == []
+
+
 def test_mcp_lists_verification_record_tool_with_mutating_metadata() -> None:
     from warpline import mcp
 

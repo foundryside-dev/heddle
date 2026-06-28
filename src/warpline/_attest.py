@@ -88,7 +88,7 @@ def parse_attest_bundle(bundle: Any) -> dict[str, Any]:
     return {
         "schema": bundle.get("schema"),
         "commit": payload.get("commit"),
-        "dirty": bool(payload.get("dirty")),
+        "dirty": payload.get("dirty"),
         "sei_source": payload.get("sei_source"),
         "by_sei": by_sei,
     }
@@ -185,12 +185,14 @@ def worklist_risk(
             cause=f"attestation schema is {parsed['schema']!r}, not {ATTEST_SCHEMA!r}",
             fix=f"supply a {ATTEST_SCHEMA} bundle (a newer/older attest schema is not honored)",
         )
-    if parsed["dirty"]:
+    if parsed["dirty"] is not False:
         return _unavailable(
             "attestation_dirty",
-            cause="the attestation was built over a DIRTY working tree, so its commit does "
-            "not truthfully pin the attested source",
-            fix="re-attest a clean (committed) tree so the bundle's commit pins the body",
+            cause=(
+                "the attestation did not explicitly report dirty=false, so its commit does "
+                "not truthfully pin the attested source"
+            ),
+            fix="re-attest a clean (committed) tree so the bundle records dirty=false",
         )
     if not isinstance(parsed["commit"], str) or not parsed["commit"]:
         return _unavailable(
