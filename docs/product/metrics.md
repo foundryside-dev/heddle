@@ -116,6 +116,36 @@ the federation seam *strengthened*.
   advertises `requirements-enrichment` in real member repos — if it never does, the
   dimension reads perpetually `disabled` and adds no signal.
 
+## 2026-06-29 readings — arch-analysis Phase-2 reliability hardening (PDR-0009)
+
+Guardrail-class hardening (U1/U2/U3/U4/U8); no north-star movement (stated honestly),
+no reversal trigger crossed.
+
+- **Authority-boundary / data-integrity guardrail — strengthened.** U1 adds a
+  `_assert_no_orphans` referential-integrity invariant over the FK-less derived tables
+  (`snapshot_edges`, `co_change_pairs`), test/CI-invoked, zero added queries on the
+  production merge path — converts a silent-corruption hazard into a loud test failure.
+- **Silent-correctness — closed.** U2 replaces the length-only positional guard with a
+  per-row **locator identity echo** (independent provenance) that raises `ValueError` on
+  equal-length order-drift; adversarially verified to fail-if-reverted. The only
+  silent-wrong-answer item in the arch-analysis is now defended.
+- **Observability + reliability.** U3 routes the three read-path swallows through
+  `health_log` (degradation now traceable, not silent); U4 stamps the throttle marker on
+  the capture-RAISE path (no more invisible spin-up re-pay); U8 bounds the loomweave
+  client (frame cap + read deadline) so a hung sibling can't wedge a graph read.
+- **Suite** — full warpline suite **572 passed / 1 skipped / 0 failed** (one new U2 test
+  over the 569 baseline); ruff + `mypy src/warpline` clean; wardline `--fail-on ERROR`
+  exit 0. Behavior-preserving; frozen golden vectors intact.
+
+- **⚠️ PDR-0008 watch reading — requirements dimension currently `disabled` in practice.**
+  The producer review (this session) found the installed `plainweave` binary is **stale
+  (v1.0.0, no `requirements-enrichment` verb)** while source is v1.1.0 with the verb. So
+  warpline's capability probe hits the stale binary and the requirements member reads
+  `disabled` — the contract is dark end-to-end until a `uv tool install --force` reinstall
+  ships v1.1.0 on PATH. This does **not** trip PDR-0008's reversal trigger (which is
+  "*never* advertises") — it is a fixable ship gap — but the dimension adds no live signal
+  until the reinstall (owner escalation; see `current-state.md`).
+
 ## Reading notes
 
 - The north-star is deliberately agent-workflow based. Warpline wins only when an

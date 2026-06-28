@@ -1,6 +1,6 @@
 # Roadmap - Warpline
 
-Updated: 2026-06-29 (PDR-0008 — Plainweave requirements consumer accepted: all four federation members are now live reverify consumers; the Rung-2 "light up inert dimensions" item is complete pending the `release/1.2.0` cut)
+Updated: 2026-06-29 (PDR-0009 — arch-analysis Phase-2 reliability hardening accepted [U1/U2/U3/U4/U8]; the Rung-2 diagnostic tier is complete [verification-freshness PDR-0007, four-member federation PDR-0008] and the `release/1.2.0` cut is the active owner escalation)
 
 Sequencing, WSJF / cost-of-delay, and dated forecasts are produced by
 program-management. This file records bets as intent, not a delivery schedule.
@@ -151,13 +151,25 @@ attributed to its owning member, composed at read time, never mirrored.**
   + fix` per source). A COP with a dark sector that *looks* empty is worse than no
   COP — an unmonitored frame must never read as "nothing changed."
 
-## Now (committed, in-flight)
+## Now (committed)
 
-- **Rung 2 — verification-freshness** *(active bet — PDR-0005)*. A `last_verified`
-  axis sourced from warpline's own gate result, so the reverify worklist answers
-  "changed since last proven-good" with a trust-decay signal; advisory, never gates.
-  Spec ready (`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`);
-  next step is `/axiom-planning`. Sibling-sourced verification stays honest-absent.
+The Rung-2 diagnostic tier is essentially complete and the four-member federation seam
+is fully lit; the active committed intent is the **release cut**.
+
+- **Rung 2 — verification-freshness** — *DONE* (PDR-0005 → accepted PDR-0007). The
+  `last_verified` trust-decay axis, merged and validated on a real repo against its
+  reversal trigger.
+- **Rung 2 — light up the inert dimensions** — *DONE* (PDR-0008). All four
+  `include_federation` members are real reverify consumers: filigree (work), wardline
+  (risk / attest-2), legis (governance), plainweave (requirements) — the dimension
+  warpline had never wired.
+- **Reliability hardening (arch-analysis Phase 2)** — *DONE* (PDR-0009). U1/U2/U3/U4/U8:
+  the FK-less referential-integrity invariant, the order-drift identity echo, read-path
+  observability, the throttle gap, and loomweave-client hardening. Guardrail work that
+  de-risks the `store.py` / `reverify_worklist` chokepoints every future bet must edit.
+- **Cut + release the `release/1.2.0` stack** — a 1.3.0-worth of accepted capability sits
+  atop v1.2.0. The version cut (1.3.0 vs 1.2.x) and the public-release-status change are
+  the **owner escalation** (see `current-state.md`); intent only, no date here.
 - **Evidence freshness** — keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Warpline evolves.
 
