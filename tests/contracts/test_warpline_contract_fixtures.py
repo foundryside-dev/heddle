@@ -63,6 +63,17 @@ def test_mcp_tool_inventory_is_agent_first_and_enrich_only() -> None:
         assert tool["schema"].startswith("warpline.") and ".draft." not in tool["schema"]
         assert tool["authority_boundary"]
 
+    # Boundary is DELIBERATE, not drift: this admitted-frozen inventory enumerates
+    # only the local-state-WRITING federation data contracts (every entry asserts
+    # writes_local_state==True / mutates_paths==[".weft/warpline/"] above). The
+    # read-only `project_status` binding/health probe (writes_local_state=False,
+    # mutates_paths=[]) is intentionally NOT a frozen data contract and is excluded.
+    # Pin that boundary so a future edit adding it here (which would break the
+    # writes_local_state invariant) or silently dropping the probe is a visible,
+    # reviewed decision — not an invisible omission hidden by the subset checks.
+    assert "project_status" not in set(names)
+    assert "warpline_project_status_get" not in set(names)
+
 
 def test_changed_response_fixture_is_frozen_envelope() -> None:
     fixture = load("mcp-response-changed.json")

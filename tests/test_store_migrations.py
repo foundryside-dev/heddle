@@ -1,11 +1,11 @@
 """Rung 1a: ordered migration runner + PRAGMA hardening.
 
 The base SCHEMA is FROZEN after Rung 1a; all schema change lands via the ordered
-``MIGRATIONS`` list. As of Rung 1b the real list carries v2 (anchor columns), so
-the highest known version is 2. The runner mechanics (ordering, atomicity,
-idempotence, concurrency safety) are still exercised against synthetic
-migrations monkeypatched onto the module so they stay decoupled from any single
-shipped version.
+``MIGRATIONS`` list. As of Rung 2 Track B the real list carries v2 (anchor
+columns), v3 (co_change_pairs), and v4 (verification_events), so the highest
+known version is 4. The runner mechanics (ordering, atomicity, idempotence,
+concurrency safety) are still exercised against synthetic migrations monkeypatched
+onto the module so they stay decoupled from any single shipped version.
 """
 
 from __future__ import annotations
@@ -42,10 +42,10 @@ def test_fresh_db_lands_at_highest_known_version(tmp_path: Path) -> None:
     db = tmp_path / "warpline.db"
     with WarplineStore.open(db) as store:
         assert store.schema_version() == store_mod.HIGHEST_KNOWN_VERSION
-    # As of Rung 2 Track A the highest known version is 3 (co_change_pairs;
-    # v2 anchor columns + v3 co-change graph).
+    # As of Rung 2 Track B the highest known version is 4 (verification_events;
+    # v2 anchor columns + v3 co-change graph + v4 verification-freshness events).
     assert _user_version(db) == store_mod.HIGHEST_KNOWN_VERSION
-    assert store_mod.HIGHEST_KNOWN_VERSION == 3
+    assert store_mod.HIGHEST_KNOWN_VERSION == 4
 
 
 def test_connection_pragmas_are_hardened(tmp_path: Path) -> None:
@@ -122,13 +122,13 @@ def test_user_version_zero_with_divergent_meta_adopts_and_warns(tmp_path: Path) 
     """M9: user_version==0 but meta.schema_version!='1' → adopt meta value + warn.
 
     The marker is only TRUSTED when the schema objects it implies are actually
-    present (#9). Here a fully-migrated DB (all v2/v3 objects on disk) is forged
+    present (#9). Here a fully-migrated DB (all v2/v3/v4 objects on disk) is forged
     with an ahead marker '5' and user_version=0 — a genuinely-newer writer whose
-    extra v(>3) objects we cannot enumerate — so the marker is adopted as-is and
+    extra v(>4) objects we cannot enumerate — so the marker is adopted as-is and
     flagged ahead, NOT floored away.
     """
     db = tmp_path / "warpline.db"
-    # Materialize the real schema (lands at v3 with anchor columns + co_change_pairs).
+    # Materialize the real schema (v4: anchor columns + co_change_pairs + verification_events).
     with WarplineStore.open(db):
         pass
     # Forge an ahead marker with user_version reset to 0 (divergent newer writer).
@@ -140,7 +140,7 @@ def test_user_version_zero_with_divergent_meta_adopts_and_warns(tmp_path: Path) 
 
     with WarplineStore.open(db) as store:
         # Adopted 5 from meta (objects present → marker trusted); 5 > highest
-        # known (3), so it is also flagged ahead.
+        # known (4), so it is also flagged ahead.
         assert store.schema_version() == 5
     codes = _health_codes(db)
     assert "MIGRATION_META_RECONCILE" in codes
@@ -163,20 +163,21 @@ def _table_names(db: Path) -> set[str]:
 
 
 def test_inflated_meta_without_schema_objects_reruns_migrations(tmp_path: Path) -> None:
-    """#9: meta.schema_version='3' but NO co_change_pairs table → migrations re-run.
+    """#9: meta.schema_version='4' but NO co_change_pairs table → migrations re-run.
 
-    A DB whose meta marker CLAIMS v3 but is missing the objects v3 implies must
-    not come up "at v3" — the next coupling query would raise ``no such table``.
+    A DB whose meta marker CLAIMS v4 but is missing the objects v4 implies must
+    not come up "at v4" — the next coupling query would raise ``no such table``.
     The runner sanity-checks object presence, floors to the verified version, and
     re-applies the missing steps, so after open() the table actually exists.
     """
 
     db = tmp_path / "warpline.db"
-    # Base SCHEMA only: no anchor columns (v2), no co_change_pairs (v3). Then forge
-    # an inflated marker with user_version=0 (pre-runner / divergent writer).
+    # Base SCHEMA only: no anchor columns (v2), no co_change_pairs (v3), no
+    # verification_events (v4). Then forge an inflated marker with user_version=0
+    # (pre-runner / divergent writer).
     raw = sqlite3.connect(db)
     raw.executescript(SCHEMA)
-    raw.execute("UPDATE meta SET value = '3' WHERE key = 'schema_version'")
+    raw.execute("UPDATE meta SET value = '4' WHERE key = 'schema_version'")
     raw.execute("PRAGMA user_version = 0")
     raw.commit()
     raw.close()
@@ -191,6 +192,10 @@ def test_inflated_meta_without_schema_objects_reruns_migrations(tmp_path: Path) 
             "SELECT COUNT(*) AS c FROM co_change_pairs"
         ).fetchone()["c"]
         assert n == 0
+        # The v4 verification_events table is also present after re-running.
+        assert store.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='verification_events'"
+        ).fetchone() is not None
         # The v2 anchor columns are present too (floored below v2 as well).
         cols = {r["name"] for r in store.conn.execute("PRAGMA table_info(change_events)")}
         assert {"detected_branch", "detected_context"} <= cols

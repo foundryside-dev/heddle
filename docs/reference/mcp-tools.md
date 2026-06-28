@@ -36,6 +36,21 @@ All tools require `repo` (a path string). The read tools are marked
 `read_only: true` but may initialize `.weft/warpline/` state on first touch; only
 `warpline_edge_snapshot_capture` records new facts.
 
+### Additive health probe — `warpline_project_status_get` / `project_status`
+
+Beyond the six frozen data contracts there is one **additive, non-frozen** health
+probe: `warpline_project_status_get` / `project_status`
+(`warpline.project_status.v1`). It answers "can THIS build read and *serve* the
+snapshot store for `repo`?" — the federation-attachment signal Lacuna's
+MCP-attachment probe asserts on. It is the only **genuinely** read-only tool
+(`writes_local_state: false`, `mutates_paths: []`): it creates and migrates no
+snapshot state and leaves a present `warpline.db` byte-for-byte unchanged. The
+response carries `data.binding_ok` and `data.store.schema_version` (read from
+inside the store; `null` when absent, corrupt, or `schema_ahead` of this build),
+with `data.store_status` drawn from the closed vocabulary `{ok, store_absent,
+store_unreadable, schema_ahead}`. It is intentionally **excluded** from the frozen
+six-tool `mcp-tool-inventory.json` — an additive probe, not a data contract.
+
 ## The success envelope
 
 Every outbound tool returns the same frozen envelope. Only `data`, `next_actions`,

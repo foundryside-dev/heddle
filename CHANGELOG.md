@@ -8,6 +8,35 @@ The cross-member MCP seam contracts are versioned independently as
 `warpline.<contract>.v1` and frozen at the federation clean-break launch; a `v2`
 is a new contract URI, never a mutation of `v1`.
 
+## [Unreleased]
+
+### Added
+
+- **`warpline_project_status_get` / `project_status` — read-only store-binding
+  probe (`warpline.project_status.v1`).** A new MCP tool that reports whether THIS
+  build can read and *serve* the snapshot store for a given `repo`
+  (`data.binding_ok`), reading `schema_version` **from inside** the store
+  (`data.store.schema_version`) — never mere directory existence — so a
+  stale-but-running warpline that cannot read its `.weft/warpline` store at a
+  compatible schema is caught (the federation attachment signal Lacuna's
+  MCP-attachment probe asserts on to classify warpline `live-bound`). It is the
+  first **genuinely** read-only tool: `writes_local_state: false`,
+  `mutates_paths: []`, and it creates/migrates **no snapshot state** — an absent
+  store reports `store_status: store_absent` with a `capture_snapshot` next-action
+  (no DB is created), a corrupt store `store_unreadable`, and a store written by a
+  newer build `schema_ahead` (all three: `binding_ok: false`, `schema_version:
+  null`); a present store's `warpline.db` is left byte-for-byte unchanged. Reads
+  the store strictly read-only (`mode=ro`, no create-on-missing; opening a present
+  WAL store may spawn gitignored `-wal`/`-shm` coordination sidecars, which are not
+  snapshot state). The frozen six-tool federation-contract inventory
+  (`mcp-tool-inventory.json`) is unchanged — this is an additive health probe, not
+  a frozen data contract.
+- **v4 schema migration (`verification_events`).** The store's
+  `HIGHEST_KNOWN_VERSION` advances to 4 with an additive, forward-only
+  `verification_events` table (`_migrate_v4_verification_events`), so this build can
+  read and serve a v4 snapshot store rather than reporting it `schema_ahead`. The
+  migration is `CREATE TABLE IF NOT EXISTS`-only and touches no existing rows.
+
 ## [1.2.0] - 2026-06-24
 
 Minor release: spine hardening. Snapshot capture is now correct-by-construction and

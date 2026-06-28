@@ -240,6 +240,35 @@ TOOL_SPECS = [
             federation_dependencies=["loomweave"],
         ),
     ),
+    _tool_spec(
+        endorsed="warpline_project_status_get",
+        shim="project_status",
+        schema=commands.SCHEMA_PROJECT_STATUS,
+        description=(
+            "Read-only store-binding/health probe: reports whether THIS warpline build can "
+            "read and SERVE the snapshot store for the given repo (binding_ok), reading "
+            "schema_version from INSIDE the store. warpline is repo-per-call, bound to nothing "
+            "at launch — this is a can-service-R check, never a launch-time binding. Creates and "
+            "migrates NOTHING; an absent store is reported absent."
+        ),
+        input_properties={},
+        required=["repo"],
+        # GENUINELY read-only: unlike the other read tools (which lazily open —
+        # and thus initialize/migrate — the store, hence writes_local_state), this
+        # probe writes NO durable snapshot state: no DB is created for an absent
+        # store, no rows are written, and warpline.db is left byte-for-byte
+        # unchanged. mutates_paths=[] names that durable-state surface (opening a
+        # present WAL store read-only may still spawn gitignored SQLite -wal/-shm
+        # coordination sidecars, which are not snapshot state). It is the first
+        # tool with writes_local_state=False / mutates_paths=[].
+        metadata=_metadata(
+            read_only=True,
+            writes_local_state=False,
+            idempotent=True,
+            mutates_paths=[],
+            federation_dependencies=[],
+        ),
+    ),
 ]
 
 
@@ -433,10 +462,22 @@ def _h_capture(args: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _h_project_status(args: dict[str, Any]) -> dict[str, Any]:
+    return commands.project_status(_repo_arg(args))
+
+
 _HANDLERS: dict[str, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 for _spec, _handler in zip(
     TOOL_SPECS,
-    [_h_change_list, _h_timeline, _h_churn, _h_impact, _h_reverify, _h_capture],
+    [
+        _h_change_list,
+        _h_timeline,
+        _h_churn,
+        _h_impact,
+        _h_reverify,
+        _h_capture,
+        _h_project_status,
+    ],
     strict=True,
 ):
     _HANDLERS[_spec["endorsed"]] = _handler
@@ -519,6 +560,8 @@ _HANDLER_CONSUMES: dict[str, frozenset[str]] = {
             "idempotency_key",
         }
     ),
+    # The binding probe consumes only repo (the standard _repo_arg contract).
+    "warpline_project_status_get": frozenset({"repo"}),
 }
 
 # The fast-follow placeholder set is EMPTY for every tool: there is no
@@ -535,6 +578,7 @@ _KNOWN_FASTFOLLOW_DEAD: dict[str, frozenset[str]] = {
     "warpline_impact_radius_get": frozenset(),
     "warpline_reverify_worklist_get": frozenset(),
     "warpline_edge_snapshot_capture": frozenset(),
+    "warpline_project_status_get": frozenset(),
 }
 
 
