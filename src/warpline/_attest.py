@@ -215,6 +215,22 @@ def worklist_risk(
         )
 
     # 4. Per-entity mechanical match. ALL-OR-NOTHING across the worklist.
+    #
+    # An EMPTY affected set cannot be proven: the all-or-nothing loop below is
+    # vacuously satisfied (zero unmatched), but no affected entity was actually
+    # attested. A complete worklist with no SEI-keyed entity (e.g. an install /
+    # backfill run while loomweave was unavailable) is UNKEYED, not proven-good —
+    # fail closed rather than mint a vacuous proven verdict with matched/affected 0.
+    if not affected_seis:
+        return _unavailable(
+            "attestation_unkeyed",
+            cause="the worklist's impact set carries no SEI-keyed entity, so no affected "
+            "entity can be matched against the attestation (an unkeyed/backfill worklist "
+            "cannot be proven good)",
+            fix="re-index with loomweave wired so the worklist's entities carry SEIs, then "
+            "re-consult — an empty/unkeyed affected set is never proven-good",
+        )
+
     chash = content_hash_for_sei or (lambda _sei: None)
     by_sei = parsed["by_sei"]
     unmatched: list[str] = []

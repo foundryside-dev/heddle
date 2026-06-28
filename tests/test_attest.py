@@ -185,6 +185,24 @@ def test_sei_source_unavailable_is_unkeyed() -> None:
     assert verdict["reason_code"] == "attestation_unkeyed"
 
 
+def test_empty_affected_set_with_valid_bundle_is_unkeyed_not_proven() -> None:
+    # A complete worklist with NO SEI-keyed affected entity (e.g. an install /
+    # backfill run while loomweave was unavailable) must NOT vacuously read
+    # proven on the empty all-or-nothing loop. A syntactically valid, SEI-keyed
+    # bundle is supplied, yet the worklist itself keys nothing → unavailable.
+    verdict = _risk(
+        impact_completeness=_COMPLETE,
+        affected_seis=[],
+        bundle=_bundle(boundaries=[_boundary(SEI_A, HASH_A)]),
+        current_commit=COMMIT,
+        content_hash_for_sei=_hashes({SEI_A: HASH_A}),
+    )
+    assert verdict["risk"] == "unavailable"
+    assert verdict["reason_code"] == "attestation_unkeyed"
+    # never the vacuous proven-good with matched/affected 0
+    assert verdict["risk"] not in {"proven", "clean", "allowed"}
+
+
 def test_content_hash_drift_is_not_proven() -> None:
     # boundary attests an OLD hash; the entity's current body moved -> not proven.
     verdict = _risk(

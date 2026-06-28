@@ -374,6 +374,18 @@ def apply_page(
     a normal page, ``partial`` when a cursor lands at or past the end (an honest
     empty page, never a silent clean-empty)."""
 
+    # A non-positive limit would slice an empty window WITHOUT advancing the
+    # offset, so a non-empty result reports has_more:true with a next_cursor equal
+    # to the current offset — a cursor-following client loops forever. Reject it
+    # loudly, exactly as max_entities / the cursor offset reject non-positive
+    # bounds (PDR-0023: honor the advertised knob or reject it, never quietly
+    # mis-page). InvalidSortError is the pagination family's error (its sibling
+    # cursor knob raises the same); rejected_field names the offending input.
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        raise InvalidSortError(
+            "limit must be a positive integer", rejected_field="limit"
+        )
+
     offset = decode_cursor(cursor)
     total = len(items)
     window = items[offset : offset + limit]

@@ -196,6 +196,19 @@ def test_cursor_past_end_is_honest_partial_not_silent_clean(tmp_path: Path) -> N
     assert "cause" in page and "fix" in page
 
 
+def test_non_positive_limit_rejects_loudly(tmp_path: Path) -> None:
+    # A limit of 0 (or negative) would slice an empty window without advancing the
+    # offset, so a non-empty result reports has_more:true with a self-referential
+    # next_cursor — a cursor-following client loops forever. Reject it loudly, like
+    # every other non-positive numeric bound (max_entities, cursor offset).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _three_changes(repo)
+    for bad in (0, -1, -50):
+        with pytest.raises(InvalidSortError, match="limit"):
+            commands.change_list(repo, limit=bad)
+
+
 def test_malformed_cursor_rejects_loudly(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -347,6 +360,34 @@ def test_include_next_actions_false_suppresses_next_actions(tmp_path: Path) -> N
     off = commands.change_list(repo, include_next_actions=False)
     assert "warpline_reverify_worklist_get" in on["next_actions"]
     assert off["next_actions"] == {}
+
+
+def test_change_list_filters_narrow_followup_seeds(tmp_path: Path) -> None:
+    # When a path_prefix filter narrows the visible items, the follow-up seeds
+    # (data.changed_refs + the reverify/blast next_action arguments) must narrow
+    # with them. Otherwise following the advertised next action rechecks unrelated
+    # unfiltered changes (here: lib/c.py, which the src/ filter excludes).
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _three_changes(repo)
+    env = commands.change_list(repo, filters={"path_prefix": "src/"})
+
+    # only the src/ entities are visible
+    assert {i["entity"]["path"] for i in env["data"]["items"]} == {"src/a.py", "src/b.py"}
+
+    # the data.changed_refs seed drops the filtered-out lib/c.py entity
+    seed_values = {r["value"] for r in env["data"]["changed_refs"]}
+    assert seed_values == {"loomweave:eid:a", "python:function:b"}
+    assert "python:function:c" not in seed_values
+
+    # and BOTH next_action seed lists (refs + key_ids) reflect the filtered set
+    for action in ("warpline_reverify_worklist_get", "warpline_impact_radius_get"):
+        args = env["next_actions"][action]["arguments"]
+        assert {r["value"] for r in args["changed_refs"]} == {
+            "loomweave:eid:a",
+            "python:function:b",
+        }
+        assert len(args["changed_entity_key_ids"]) == 2
 
 
 def test_base_head_ref_conflicts_with_rev_range(tmp_path: Path) -> None:

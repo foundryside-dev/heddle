@@ -385,7 +385,7 @@ def test_capture_skipped_without_prior_writes_skipped_atomically(tmp_path: Path)
     repo = tmp_path / "repo"
     repo.mkdir()
     with WarplineStore.open(tmp_path / "warpline.db") as store:
-        repo_id = store.ensure_repo(repo)
+        store.ensure_repo(repo)
         result = capture_edge_snapshot(
             store, repo, commit_sha="c1", client=None, source_version="no_index"
         )

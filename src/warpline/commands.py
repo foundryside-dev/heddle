@@ -248,18 +248,26 @@ def change_list(
     with WarplineStore.open(default_store_path(repo)) as store:
         events = store.list_change_events(repo, commit_shas=commit_shas)
         items: list[dict[str, Any]] = []
-        changed_refs: list[dict[str, str]] = []
-        seen_refs: set[tuple[str, str]] = set()
-        key_ids: list[int] = []
+        # change_id -> (changed_ref, entity_key_id): the per-event follow-up SEED
+        # inputs, rebuilt from the FILTERED set below so the reverify/blast
+        # next_actions and data.changed_refs narrow with a filter too — not just
+        # the visible items. Keyed by the unique change_id so the rebuild is
+        # order-preserving and byte-identical to the per-event source when no
+        # filter is active (event_key_id is read from the event, never the view).
+        seed_by_change_id: dict[str, tuple[dict[str, str], Any]] = {}
         has_sei = False
         for event in events:
             path = str(event.get("path"))
             view = entity_view(event, include_key_id=True, path=path)
             if view["sei"]:
+                # whether the underlying (unfiltered) change-set resolved any SEI:
+                # an enrichment posture, not a next_action seed, so it stays on the
+                # FULL set (unlike changed_refs/key_ids, which DO narrow per filter).
                 has_sei = True
+            change_id = f"warpline:change:{event.get('change_event_id')}"
             items.append(
                 {
-                    "change_id": f"warpline:change:{event.get('change_event_id')}",
+                    "change_id": change_id,
                     "entity": view,
                     "change_kind": event.get("change_kind"),
                     "actor": event.get("actor"),
@@ -267,18 +275,28 @@ def change_list(
                     "changed_at": event.get("changed_at"),
                 }
             )
-            ref = changed_ref_for_row(event)
-            ref_key = (ref["kind"], ref["value"])
-            if ref_key not in seen_refs:
-                seen_refs.add(ref_key)
-                changed_refs.append(ref)
-            key_id = event.get("entity_key_id")
-            if isinstance(key_id, int) and key_id not in key_ids:
-                key_ids.append(key_id)
+            seed_by_change_id[change_id] = (
+                changed_ref_for_row(event),
+                event.get("entity_key_id"),
+            )
 
         # Filter → sort → overflow-bound → page: the list-ergonomics pipeline,
         # each step honoring its advertised knob or rejecting it loudly.
         items = apply_filters(items, tool="warpline_change_list", filters=filters)
+        # Seeds from the FILTERED (pre-page) set: a path_prefix/actor/since filter
+        # must narrow the advertised reverify/blast scope too, or following the
+        # next_action rechecks unfiltered changes. Deduped, order-preserving.
+        changed_refs: list[dict[str, str]] = []
+        key_ids: list[int] = []
+        seen_refs: set[tuple[str, str]] = set()
+        for item in items:
+            ref, key_id = seed_by_change_id[item["change_id"]]
+            ref_key = (ref["kind"], ref["value"])
+            if ref_key not in seen_refs:
+                seen_refs.add(ref_key)
+                changed_refs.append(ref)
+            if isinstance(key_id, int) and key_id not in key_ids:
+                key_ids.append(key_id)
         items = apply_sort(
             items, tool="warpline_change_list", sort_by=sort_by, sort_order=sort_order
         )
@@ -1222,7 +1240,6 @@ def capture_snapshot(
     client_available = status == "available"
     with WarplineStore.open(default_store_path(repo)) as store:
         existing = store.latest_snapshot(repo)
-        had_snapshot = existing is not None
         warnings: list[str] = []
         data: dict[str, Any]
         scope_locators: set[str] | None = None
@@ -1291,7 +1308,14 @@ def capture_snapshot(
                 )
             finally:
                 _close_if_supported(client)
-            result["idempotency"] = "already_current" if had_snapshot else "created"
+            # Idempotency reflects whether THIS capture was skipped/reused, not
+            # whether ANY prior snapshot existed: a capture that writes a new row
+            # for a different commit is still `created`. The only honest
+            # `already_current` is the loomweave-absent preserve path, which flags
+            # `recapture_skipped` because it wrote nothing.
+            result["idempotency"] = (
+                "already_current" if result.get("recapture_skipped") else "created"
+            )
             result.pop("query", None)
             result.pop("enrichment", None)
             if result.get("capped"):
