@@ -103,6 +103,59 @@ def requirements_reason() -> dict[str, Any]:
     )
 
 
+def requirements_reason_for(req_state: str) -> dict[str, Any]:
+    """Map a closed ``enrichment.requirements`` scalar to its weft-reason triple.
+
+    Mirrors :func:`sei_reason` for the requirements member (Plainweave producer):
+
+      * ``present`` -> earned ``clean`` (≥1 alive requirement bound);
+      * ``absent``  -> ``unresolved_input`` (entity KNOWN to plainweave, none bound —
+        a definitive "none here", with the recruiting fix to bind one or accept it);
+      * ``unavailable`` -> ``unreachable`` (plainweave could NOT determine requirements
+        for one or more entities — identity not resolvable locally — never "no
+        requirements"). This is the live explanation for a reachable producer that
+        returned per-entity ``unavailable``; a member with NO transport (disabled) or a
+        transport that raised carries its OWN federation weft-reason instead.
+
+    Raises ValueError for any value outside the closed vocab so a caller never attaches
+    a triple it cannot explain. Reuses the canonical 11 — no new reason_class. The
+    static :func:`requirements_reason` (``disabled``) remains the not-consulted/unwired
+    fallback.
+    """
+
+    if req_state == "present":
+        return reason("clean")
+    if req_state == "absent":
+        return reason(
+            "unresolved_input",
+            cause=(
+                "plainweave knows the entity but no requirement is bound to it "
+                "(a definitive none-here, not an unknown)"
+            ),
+            fix=(
+                "bind a requirement to this entity in plainweave (a satisfies/verifies "
+                "trace), or accept it as honestly unbound; until then requirements is "
+                "absent, not an earned-empty clean"
+            ),
+        )
+    if req_state == "unavailable":
+        return reason(
+            "unreachable",
+            cause=(
+                "plainweave could not determine requirements for one or more affected "
+                "entities (identity not resolvable locally — never 'no requirements')"
+            ),
+            fix=(
+                "run `loomweave analyze <repo>` so the entity gets a stable SEI plainweave "
+                "can resolve (or confirm plainweave's catalog is in sync), then re-query"
+            ),
+        )
+    raise ValueError(
+        f"req_state {req_state!r} is outside the closed enrichment.requirements vocab "
+        "(present|absent|unavailable)"
+    )
+
+
 def sei_reason(sei_state: str) -> dict[str, Any]:
     """Map a closed ``enrichment.sei`` scalar to its explanatory weft-reason triple.
 

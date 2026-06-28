@@ -14,7 +14,11 @@ from warpline.errors import (
     MissingRequiredFieldError,
     WarplineError,
 )
-from warpline.federation import LegisGovernanceClient, WardlineDossierClient
+from warpline.federation import (
+    LegisGovernanceClient,
+    PlainweaveRequirementsClient,
+    WardlineDossierClient,
+)
 from warpline.siblings import FiligreeWorkClient
 
 CORE_OUTPUT_SCHEMA = {
@@ -473,6 +477,16 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
         if include_federation and LegisGovernanceClient.available(repo)
         else None
     )
+    # plainweave (requirements) is CAPABILITY-GATED exactly like legis: its
+    # PlainweaveRequirementsClient is wired only when the installed plainweave
+    # advertises the `requirements-enrichment` verb. Absent the verb the honest posture
+    # is `disabled` (capability absent), never a forced `unreachable` — and the client
+    # lights up automatically once plainweave ships it.
+    requirements_client = (
+        PlainweaveRequirementsClient(repo)
+        if include_federation and PlainweaveRequirementsClient.available(repo)
+        else None
+    )
     return commands.reverify_worklist(
         repo,
         _key_ids_arg(args),
@@ -489,6 +503,7 @@ def _h_reverify(args: dict[str, Any]) -> dict[str, Any]:
         include_federation=include_federation,
         risk_client=risk_client,
         legis_client=legis_client,
+        requirements_client=requirements_client,
         attest_bundle=args.get("attest_bundle"),
     )
 

@@ -41,8 +41,8 @@ and the public-release-status change** — an owner escalation (below).
 - `warpline-17242c627b` (P3) — atomic ROLLBACK coverage + no-open-transaction precondition.
   **OPEN — clean, startable** (last ungated 1.2.0 follow-up).
 - `warpline-9eae3eb86a` (P3) — Charter→Plainweave sibling-guard evidence refresh. Was gated
-  on the local `plainweave` repo being present; **plainweave IS present at
-  `/home/john/plainweave`, so the gate is now liftable** — reconfirm before claiming.
+  on the local `plainweave` repo being present; **the `plainweave` sibling repo IS present
+  locally, so the gate is now liftable** — reconfirm before claiming.
 - Observation `warpline-obs-da4909ac64` (P3): bare-`assert`-under-`-O` in `mcp.py`
   inputSchema guard (expires 2026-07-09 unless promoted).
 

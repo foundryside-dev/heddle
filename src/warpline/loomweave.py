@@ -83,11 +83,21 @@ class LoomweaveMcpClient:
         command: str = "loomweave",
         timeout: float = 10.0,
         monotonic: Callable[[], float] = time.monotonic,
+        *,
+        max_frame_bytes: int = 16 * 1024 * 1024,
     ) -> None:
         self.repo = repo
         self.command = command
         self.timeout = timeout
         self._monotonic = monotonic
+        # Upper bound on the unframed read buffer. The default (16 MiB) is orders of
+        # magnitude above any real loomweave JSON-RPC envelope, so the happy path never
+        # approaches it; it exists only to bound memory if a hung/garbage sibling streams
+        # bytes with no newline. On exceed we raise TimeoutError (the deadline-class
+        # signal call_tool already handles by tearing down the wedged subprocess), so a
+        # would-be unbounded-memory wedge degrades through the same honest path a timeout
+        # does instead of accreting memory forever.
+        self._max_frame_bytes = max_frame_bytes
         self._process: subprocess.Popen[bytes] | None = None
         self._next_request_id = 0
         self._stdout_buffer = b""
@@ -112,6 +122,10 @@ class LoomweaveMcpClient:
             try:
                 proc.stdin.close()
             except BrokenPipeError:
+                # Expected, benign teardown race: the serve peer has already closed
+                # its read end, so flushing the close raises BrokenPipeError. This is
+                # the normal end-of-session condition on a best-effort close, not a
+                # swallowed error — there is nothing to log or recover here.
                 pass
         if proc.poll() is None:
             proc.terminate()
@@ -184,8 +198,7 @@ class LoomweaveMcpClient:
             return envelope
 
     def _readline(self, stdout: IO[Any], deadline: float) -> str:
-        remaining = deadline - self._monotonic()
-        if remaining <= 0:
+        if deadline - self._monotonic() <= 0:
             raise TimeoutError("loomweave serve exceeded the per-request deadline")
         if isinstance(stdout, io.TextIOBase):
             return stdout.readline()
@@ -195,30 +208,45 @@ class LoomweaveMcpClient:
         try:
             fd = stdout.fileno()
         except (AttributeError, OSError, ValueError):
+            fd = None
+        if fd is None:
             line = stdout.readline()
             if isinstance(line, bytes):
                 return line.decode("utf-8", errors="replace")
             return str(line)
-        selector = selectors.DefaultSelector()
-        try:
-            selector.register(fd, selectors.EVENT_READ)
-            events = selector.select(remaining)
-        finally:
-            selector.close()
-        if not events:
-            raise TimeoutError("loomweave serve timed out before returning a response")
-        chunk = os.read(fd, 4096)
-        if not chunk:
-            if self._stdout_buffer:
-                buffered = self._stdout_buffer.decode("utf-8", errors="replace")
-                self._stdout_buffer = b""
+        # Bounded loop (NOT tail recursion): one os.read may deliver only a partial
+        # frame, so we re-read until a newline completes a line. A recursive form would
+        # add one stack frame per chunk and blow sys.getrecursionlimit() (~4 MiB on a
+        # 4096-byte stream) *below* self._max_frame_bytes, raising RecursionError — a
+        # RuntimeError subclass call_tool does NOT catch, which would leak the wedged
+        # subprocess. The loop re-checks the deadline and the frame cap each pass so the
+        # cap is actually reachable at its default and both fire TimeoutError, routing
+        # failure through call_tool's existing close()-then-RuntimeError teardown.
+        while True:
+            remaining = deadline - self._monotonic()
+            if remaining <= 0:
+                raise TimeoutError("loomweave serve exceeded the per-request deadline")
+            selector = selectors.DefaultSelector()
+            try:
+                selector.register(fd, selectors.EVENT_READ)
+                events = selector.select(remaining)
+            finally:
+                selector.close()
+            if not events:
+                raise TimeoutError("loomweave serve timed out before returning a response")
+            chunk = os.read(fd, 4096)
+            if not chunk:
+                if self._stdout_buffer:
+                    buffered = self._stdout_buffer.decode("utf-8", errors="replace")
+                    self._stdout_buffer = b""
+                    return buffered
+                return ""
+            self._stdout_buffer += chunk
+            buffered = self._pop_stdout_line()
+            if buffered is not None:
                 return buffered
-            return ""
-        self._stdout_buffer += chunk
-        buffered = self._pop_stdout_line()
-        if buffered is not None:
-            return buffered
-        return self._readline(stdout, deadline)
+            if len(self._stdout_buffer) > self._max_frame_bytes:
+                raise TimeoutError("loomweave serve frame exceeded max_frame_bytes")
 
     def _pop_stdout_line(self) -> str | None:
         if b"\n" not in self._stdout_buffer:

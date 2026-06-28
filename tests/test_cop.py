@@ -168,15 +168,15 @@ def test_compose_temporal_cop_lists_every_member_as_dark_sector(tmp_path: Path) 
     _seed(repo, "a.py", "def f():\n    return 1\n")
     with WarplineStore.open(default_store_path(repo)) as store:
         items, echo, _ = resolve_frame(store, repo, {"kind": "rev_range", "rev_range": None})
-    # No transports wired → all three members are dark sectors (disabled),
+    # No transports wired → all four members are dark sectors (disabled),
     # NEVER silently dropped to look like a clean empty.
     cop = compose_temporal_cop(items, echo)
-    assert set(cop["members"]) == {"filigree", "wardline", "legis"}
+    assert set(cop["members"]) == {"filigree", "wardline", "legis", "plainweave"}
     coverage = cop["coverage"]
-    assert coverage["members_total"] == 3
+    assert coverage["members_total"] == 4
     assert coverage["members_consulted"] == 0
     dark = {d["member"] for d in coverage["dark_sectors"]}
-    assert dark == {"filigree", "wardline", "legis"}
+    assert dark == {"filigree", "wardline", "legis", "plainweave"}
     for sector in coverage["dark_sectors"]:
         assert sector["reason_class"] == "disabled"
         assert sector["cause"] and sector["fix"]
@@ -203,6 +203,6 @@ def test_compose_temporal_cop_consulted_member_is_not_dark(tmp_path: Path) -> No
     assert cop["members"]["filigree"]["weft_reason"]["reason_class"] == "clean"
     dark = {d["member"] for d in cop["coverage"]["dark_sectors"]}
     assert "filigree" not in dark
-    assert dark == {"wardline", "legis"}
+    assert dark == {"wardline", "legis", "plainweave"}
     assert cop["coverage"]["members_consulted"] == 1
     assert events  # sanity: events were ingested

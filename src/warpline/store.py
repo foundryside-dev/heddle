@@ -1053,6 +1053,80 @@ class WarplineStore:
                 ),
             )
 
+    def _assert_no_orphans(self) -> None:
+        """Referential-integrity backstop for the FK-less derived tables (#3).
+
+        ``snapshot_edges`` (source/target ``entity_key_id``) and
+        ``co_change_pairs`` (``entity_key_id_a``/``_b``) reference
+        ``entity_keys.id`` but carry NO foreign key — even with
+        ``PRAGMA foreign_keys = ON`` (so the SEI-orthogonal repoint in
+        ``_merge_into_twin`` can run mid-merge without an FK firing). That makes
+        their integrity entirely the job of the hand-written ``_repoint_*``
+        family. This method is the DB-level-equivalent of the FOREIGN KEY those
+        tables intentionally lack, but as an explicit, read-only assertion:
+
+        - It is NOT wired into any production path (``reresolve_entity_key_sei``
+          / ``_merge_into_twin`` never call it), so a normal reresolve runs with
+          ZERO added queries and no new raise — the merge stays behavior-
+          identical. It is a test/CI-callable invariant only.
+        - It raises :class:`RuntimeError` naming the offending table, column(s),
+          and id(s) on the first orphan found, so a future edit that drops a
+          ``_repoint_*`` call (or adds a third ``entity_key_id``-keyed table left
+          unrepointed) fails loudly instead of silently orphaning rows.
+
+        Existence-only and whole-DB: ``entity_keys.id`` is globally unique and
+        ``snapshot_edges`` has no ``repo_id`` column, so no repo filter is
+        needed. ``entity_keys.id`` is an INTEGER PRIMARY KEY (never NULL) and the
+        referencing columns are NOT NULL, so ``NOT EXISTS`` carries none of the
+        NULL-swallowing hazard of ``NOT IN``.
+        """
+
+        edge_orphans = self.conn.execute(
+            """
+            SELECT source_entity_key_id, target_entity_key_id
+              FROM snapshot_edges AS se
+             WHERE NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = se.source_entity_key_id
+                   )
+                OR NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = se.target_entity_key_id
+                   )
+            """
+        ).fetchall()
+        if edge_orphans:
+            ids = sorted(
+                {int(r["source_entity_key_id"]) for r in edge_orphans}
+                | {int(r["target_entity_key_id"]) for r in edge_orphans}
+            )
+            raise RuntimeError(
+                "referential-integrity violation: snapshot_edges rows reference "
+                "entity_key_id(s) with no entity_keys row "
+                f"(source_entity_key_id/target_entity_key_id; offending ids: {ids})"
+            )
+
+        pair_orphans = self.conn.execute(
+            """
+            SELECT entity_key_id_a, entity_key_id_b
+              FROM co_change_pairs AS cp
+             WHERE NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = cp.entity_key_id_a
+                   )
+                OR NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = cp.entity_key_id_b
+                   )
+            """
+        ).fetchall()
+        if pair_orphans:
+            ids = sorted(
+                {int(r["entity_key_id_a"]) for r in pair_orphans}
+                | {int(r["entity_key_id_b"]) for r in pair_orphans}
+            )
+            raise RuntimeError(
+                "referential-integrity violation: co_change_pairs rows reference "
+                "entity_key_id(s) with no entity_keys row "
+                f"(entity_key_id_a/entity_key_id_b; offending ids: {ids})"
+            )
+
     def list_entity_keys(self, repo: Path) -> list[dict[str, object]]:
         repo_id = self._repo_id(repo)
         rows = self.conn.execute(

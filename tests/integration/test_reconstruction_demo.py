@@ -157,6 +157,6 @@ def test_squash_merge_branch_sha_fallback_is_useful(tmp_path: Path) -> None:
     assert any("fell back" in str(w) for w in warnings)
     coverage = payload["coverage"]
     assert isinstance(coverage, dict)
-    assert coverage["members_total"] == 3
+    assert coverage["members_total"] == 4
     dark = {d["member"] for d in coverage["dark_sectors"]}
-    assert dark == {"filigree", "wardline", "legis"}
+    assert dark == {"filigree", "wardline", "legis", "plainweave"}

@@ -12,6 +12,8 @@ from warpline._enrichment import (
     EDGES_FOR_COMPLETENESS,
     completeness_warnings,
     edges_enrichment,
+    requirements_reason,
+    requirements_reason_for,
     sei_reason,
     staleness_warnings,
 )
@@ -22,7 +24,12 @@ from warpline.errors import (
     InvalidChangedRefsError,
     MissingRequiredFieldError,
 )
-from warpline.federation import LegisClient, RiskClient, consult_federation
+from warpline.federation import (
+    LegisClient,
+    RequirementsClient,
+    RiskClient,
+    consult_federation,
+)
 from warpline.git import commits_between, is_ancestor, resolve_commit
 from warpline.listing import (
     apply_filters,
@@ -74,7 +81,18 @@ def session_context(repo: Path) -> str:
         with WarplineStore.open(default_store_path(repo)) as store:
             events = store.list_change_events(repo)
             snapshot = store.latest_snapshot(repo)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 — fail-soft SessionStart hook; never raise.
+        # Observability breadcrumb: record the cause so an operator can tell
+        # 'store absent' from 'store present but erroring'. The store handle is
+        # opened INSIDE the try (the open() itself may be the failure), so it is
+        # not in scope here — re-open a fresh short-lived store to log, mirroring
+        # the cli.py HOOK_INGEST_FAILED precedent. The re-open is itself guarded
+        # so a genuinely dead store still returns the honest one-liner.
+        try:
+            with WarplineStore.open(default_store_path(repo)) as health_store:
+                health_store.log_health(repo, "SESSION_CONTEXT_FAILED", repr(exc))
+        except Exception:  # noqa: BLE001 — fail-soft; a dead store must still return the honest one-liner.
+            pass
         return "warpline: temporal store unavailable"
     if not events:
         return "warpline: 0 change events tracked (run `warpline backfill`)"
@@ -689,11 +707,24 @@ def _lazy_capture_if_missing(
         # store's state is consistent (the snapshot itself short-circuits future
         # reads).
         _clear_lazy_capture_marker(store)
-    except Exception:  # noqa: BLE001 — capture is advisory; never block the read.
+    except Exception as exc:  # noqa: BLE001 — capture is advisory; never block the read.
+        # U3 breadcrumb + U4 throttle-on-raise. The unavailable-probe branch above
+        # already stamps the marker before its early return; here we cover the
+        # OTHER failure mode — a capture that *raised* (e.g. loomweave reachable but
+        # erroring mid-capture) — so a hot read path does not re-pay the probe
+        # spin-up on every call. Both side effects write to the store, so a store
+        # that died mid-capture is guarded against turning this advisory swallow
+        # into a raised read (the 'never raises' contract above must hold).
+        try:
+            store.log_health(repo, "LAZY_CAPTURE_FAILED", repr(exc))
+            _record_lazy_capture_attempt(store)
+        except Exception:  # noqa: BLE001 — breadcrumb/throttle are themselves best-effort.
+            pass
         return
 
 
 def _attest_content_hashes(
+    store: WarplineStore,
     repo: Path,
     affected_seis: list[str],
     sei_to_locator: dict[str, str],
@@ -722,7 +753,16 @@ def _attest_content_hashes(
                     by_sei[sei] = content_hash
         finally:
             _close_if_supported(client)
-    except Exception:  # noqa: BLE001 — advisory consult; never block the worklist.
+    except Exception as exc:  # noqa: BLE001 — advisory consult; never block the worklist.
+        # Observability breadcrumb: record the cause; the returned (partial/empty)
+        # by_sei is byte-for-byte unchanged, so the attest consumer still honestly
+        # leaves entities attestation_incomplete — never a faked-good match. The
+        # log is itself guarded so a dead store cannot promote this advisory swallow
+        # into a raised worklist read.
+        try:
+            store.log_health(repo, "ATTEST_HASH_FAILED", repr(exc))
+        except Exception:  # noqa: BLE001 — breadcrumb is itself best-effort.
+            pass
         return by_sei
     return by_sei
 
@@ -825,6 +865,7 @@ def reverify_worklist(
     include_federation: bool = False,
     risk_client: RiskClient | None = None,
     legis_client: LegisClient | None = None,
+    requirements_client: RequirementsClient | None = None,
     loomweave_command: str | None = None,
     attest_bundle: Any = None,
 ) -> dict[str, Any]:
@@ -859,6 +900,24 @@ def reverify_worklist(
             r.get("entity_key_id") if isinstance(r.get("entity_key_id"), int) else None
             for r in result.get("affected", [])
         ]
+        # U2 — loud positional invariant: changed[i] <-> changed_key_ids[i] (and the
+        # affected axis) MUST stay 1:1, since render_reverify_worklist attaches each
+        # verification block by position (zip(..., strict=True)). A length mismatch
+        # already raises today, but as an opaque ValueError deep in reverify.py; this
+        # call-site assert hoists it into a named diagnostic that fires earlier and
+        # names the _blast<->commands order axis. Behavior-preserving: both lists
+        # derive from the same result["changed"]/["affected"] rows (enrich_blast is
+        # order-preserving, _blast.py:142-144), so this cannot fire on valid input.
+        assert len(changed) == len(changed_key_ids), (
+            "reverify positional invariant broken: changed/changed_key_ids drift "
+            f"({len(changed)} != {len(changed_key_ids)}) — the _blast<->commands "
+            "order alignment render_reverify_worklist relies on no longer holds"
+        )
+        assert len(affected) == len(affected_key_ids), (
+            "reverify positional invariant broken: affected/affected_key_ids drift "
+            f"({len(affected)} != {len(affected_key_ids)}) — the _blast<->commands "
+            "order alignment render_reverify_worklist relies on no longer holds"
+        )
         # Load ONLY the worklist's change commits (no full-table scan — push the
         # entity filter into SQL) and group by key id; load verification events once.
         worklist_key_ids = [k for k in (*changed_key_ids, *affected_key_ids) if k is not None]
@@ -975,6 +1034,7 @@ def reverify_worklist(
                 work_client=work_client,
                 risk_client=risk_client,
                 legis_client=legis_client,
+                requirements_client=requirements_client,
             )
             if include_federation
             else None
@@ -989,7 +1049,7 @@ def reverify_worklist(
         # one. Additive and reversible (D2): this is the proven-need demonstration
         # that earns freezing the wardline/legis inbound shape, not a pre-promised
         # contract; it does not lock the RESERVED-SHAPE inbound.
-        risk_state, gov_state = _merge_federation_enrichment(items, federation)
+        risk_state, gov_state, req_state = _merge_federation_enrichment(items, federation)
         items, overflow_warnings, overflow = apply_overflow(
             items, repo=repo, tool="warpline_reverify_worklist_get", schema=SCHEMA_REVERIFY_WORKLIST
         )
@@ -1018,7 +1078,9 @@ def reverify_worklist(
         # only paid when a bundle is supplied — an unreachable loomweave yields no
         # hashes, so every entity is honestly unmatched, never faked-good).
         content_hash_by_sei = (
-            _attest_content_hashes(repo, affected_seis, affected_sei_locators, loomweave_command)
+            _attest_content_hashes(
+                store, repo, affected_seis, affected_sei_locators, loomweave_command
+            )
             if attest_bundle is not None
             else {}
         )
@@ -1075,7 +1137,9 @@ def reverify_worklist(
                 work=work_state,
                 risk=risk_state,
                 governance=gov_state,
+                requirements=req_state,
             ),
+            enrichment_reasons={"requirements": _requirements_reason(federation, req_state)},
             next_actions={"filigree": filigree_candidates},
             warnings=(
                 completeness_warnings(completeness)
@@ -1127,26 +1191,82 @@ def _member_scalar(federation: dict[str, Any] | None, member: str) -> str:
     return "present" if int(block.get("entity_count", 0) or 0) > 0 else "absent"
 
 
+def _requirements_scalar(federation: dict[str, Any] | None) -> str:
+    """The envelope-level ``enrichment.requirements`` scalar for the plainweave member.
+
+    A plainweave-SPECIFIC rule (NOT the generic :func:`_member_scalar`) so a reachable
+    producer's per-entity ``unavailable`` is honored, never collapsed to a confident
+    ``absent`` (the no-silent-clean invariant):
+
+      * ``federation is None`` (never asked) or member non-clean (disabled/unreachable)
+        -> ``unavailable``;
+      * ≥1 entity ``present`` (facts returned) -> ``present`` (the present signal wins);
+      * reachable, no present, but ANY per-entity ``unavailable`` -> ``unavailable``
+        (could-not-determine, NEVER absent);
+      * reachable, all entities definitively ``absent`` -> ``absent`` (earned-empty).
+    """
+
+    if federation is None:
+        return "unavailable"
+    block = federation.get("members", {}).get("plainweave", {})
+    if block.get("weft_reason", {}).get("reason_class") != "clean":
+        return "unavailable"
+    if int(block.get("entity_count", 0) or 0) > 0:
+        return "present"
+    if block.get("unavailable_seen"):
+        return "unavailable"
+    return "absent"
+
+
+def _requirements_reason(
+    federation: dict[str, Any] | None, req_state: str
+) -> dict[str, Any]:
+    """The ``enrichment_reasons.requirements`` triple explaining ``req_state``.
+
+    Mirrors :func:`sei_reason`'s direct-scalar mapping for a clean member, but the
+    requirements member adds an unwired/down dimension the local sei dimension lacks:
+
+      * ``federation is None`` (never consulted) -> the static reserved
+        :func:`requirements_reason` (``disabled``) — matches the non-federated envelope;
+      * member ``disabled`` (verb absent) or ``unreachable`` (consult raised) -> that
+        member's OWN federation weft-reason (its cause/fix already recruit the precise
+        fix — install/upgrade, or confirm reachability);
+      * member ``clean`` -> :func:`requirements_reason_for` over the present/absent/
+        unavailable scalar.
+    """
+
+    if federation is None:
+        return requirements_reason()
+    wr: dict[str, Any] = federation.get("members", {}).get("plainweave", {}).get("weft_reason", {})
+    if wr.get("reason_class") in {"disabled", "unreachable"}:
+        return wr
+    return requirements_reason_for(req_state)
+
+
 def _merge_federation_enrichment(
     items: list[dict[str, Any]], federation: dict[str, Any] | None
-) -> tuple[str, str]:
-    """Merge per-entity ``risk``/``governance`` federation facts onto each item's
-    ``enrichment`` block and return the ``(risk_state, governance_state)`` scalars.
+) -> tuple[str, str, str]:
+    """Merge per-entity ``risk``/``governance``/``requirements`` federation facts onto
+    each item's ``enrichment`` block and return the
+    ``(risk_state, governance_state, requirements_state)`` scalars.
 
     Track C: ``consult_federation`` resolves the facts but leaves
-    ``item.enrichment.{risk,governance}`` at the empty scaffold. Copy each
-    federation entity's ``risk``/``governance`` lists onto the matching item
-    (keyed on locator). Called over the FULL filtered+sorted worklist before
-    paging, so a page-2 item is enriched identically to a page-1 one (M3).
+    ``item.enrichment.{risk,governance,requirements}`` at the empty scaffold. Copy each
+    federation entity's lists onto the matching item (keyed on locator). Called over the
+    FULL filtered+sorted worklist before paging, so a page-2 item is enriched
+    identically to a page-1 one (M3).
 
-    Returns the two envelope-level scalars per the R6 rule (see
-    :func:`_member_scalar`). Additive/advisory only; never gates (D2).
+    Returns the three envelope-level scalars: ``risk``/``governance`` per the R6 rule
+    (see :func:`_member_scalar`); ``requirements`` per the plainweave-specific
+    :func:`_requirements_scalar` (which never collapses unavailable into absent).
+    Additive/advisory only; never gates (D2).
     """
 
     risk_state = _member_scalar(federation, "wardline")
     gov_state = _member_scalar(federation, "legis")
+    req_state = _requirements_scalar(federation)
     if federation is None:
-        return risk_state, gov_state
+        return risk_state, gov_state, req_state
     fed_by_locator: dict[str, dict[str, Any]] = {}
     for fed_entity in federation.get("entities", []):
         locator = fed_entity.get("locator")
@@ -1164,7 +1284,8 @@ def _merge_federation_enrichment(
             continue
         enrichment["risk"] = fed_entity.get("risk", [])
         enrichment["governance"] = fed_entity.get("governance", [])
-    return risk_state, gov_state
+        enrichment["requirements"] = fed_entity.get("requirements", [])
+    return risk_state, gov_state, req_state
 
 
 # ---------------------------------------------------------------------------
