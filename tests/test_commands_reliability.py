@@ -319,6 +319,48 @@ def test_reverify_worklist_raises_on_changed_key_id_misalignment(
         commands.reverify_worklist(repo, [a], depth=2)
 
 
+def test_reverify_worklist_raises_on_equal_length_changed_reorder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """U2 — the REAL silent-wrong-answer fix, exercised at the build site.
+
+    A future drift that REORDERS ``enrich_blast``'s ``changed`` list without
+    reordering ``result["changed"]`` (so ``changed_key_ids`` keeps the original
+    order) is EQUAL LENGTH — the call-site length guard passes (2 == 2) — yet now
+    ``changed[i]`` aligns with the WRONG ``changed_key_ids[i]``, so the wrong
+    verification block silently attaches to the wrong entity. The per-row identity
+    echo catches it: the entity row's own locator (which travelled with the
+    permuted ``changed``) no longer matches the locator the paired key id resolves
+    to (sourced by an INDEPENDENT by-id lookup), so render raises LOUDLY.
+
+    Run RED against a length-only guard: with both lists length 2 the length
+    asserts pass and the old code returns a wrong-but-confident worklist. The echo
+    is what fails this scenario.
+    """
+
+    repo = init_repo(tmp_path)
+    commit(repo, "f.py", "x = 1\n")
+    a, b = _seed_two_entities(repo)
+    # Snapshot with NO edges so a and b stay on the CHANGED axis (no affected rows
+    # to dilute the permutation).
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        store.create_edge_snapshot(repo_id, "c1", "loomweave", "v0", "FULL")
+
+    real_enrich = commands.enrich_blast
+
+    def _swap_changed(store: object, repo: Path, result: dict[str, object]):
+        changed, affected = real_enrich(store, repo, result)
+        # Equal-length ORDER drift: changed[0]/changed[1] swapped, while
+        # result["changed"] (the source of changed_key_ids) is untouched.
+        return [changed[1], changed[0]], affected
+
+    monkeypatch.setattr(commands, "enrich_blast", _swap_changed)
+
+    with pytest.raises(ValueError, match="identity echo failed"):
+        commands.reverify_worklist(repo, [a, b], depth=2)
+
+
 def test_reverify_worklist_aligned_input_does_not_assert(tmp_path: Path) -> None:
     """The invariant holds on real (un-tampered) input: a normal reverify call
     succeeds without tripping the U2 assert — proving it is behavior-preserving

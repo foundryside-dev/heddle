@@ -81,7 +81,7 @@ def session_context(repo: Path) -> str:
         with WarplineStore.open(default_store_path(repo)) as store:
             events = store.list_change_events(repo)
             snapshot = store.latest_snapshot(repo)
-    except Exception as exc:  # noqa: BLE001 — fail-soft SessionStart hook; never raise.
+    except Exception as exc:  # fail-soft SessionStart hook; never raise.
         # Observability breadcrumb: record the cause so an operator can tell
         # 'store absent' from 'store present but erroring'. The store handle is
         # opened INSIDE the try (the open() itself may be the failure), so it is
@@ -91,7 +91,7 @@ def session_context(repo: Path) -> str:
         try:
             with WarplineStore.open(default_store_path(repo)) as health_store:
                 health_store.log_health(repo, "SESSION_CONTEXT_FAILED", repr(exc))
-        except Exception:  # noqa: BLE001 — fail-soft; a dead store must still return the honest one-liner.
+        except Exception:  # fail-soft; a dead store must still return the honest one-liner.
             pass
         return "warpline: temporal store unavailable"
     if not events:
@@ -707,7 +707,7 @@ def _lazy_capture_if_missing(
         # store's state is consistent (the snapshot itself short-circuits future
         # reads).
         _clear_lazy_capture_marker(store)
-    except Exception as exc:  # noqa: BLE001 — capture is advisory; never block the read.
+    except Exception as exc:  # capture is advisory; never block the read.
         # U3 breadcrumb + U4 throttle-on-raise. The unavailable-probe branch above
         # already stamps the marker before its early return; here we cover the
         # OTHER failure mode — a capture that *raised* (e.g. loomweave reachable but
@@ -718,7 +718,7 @@ def _lazy_capture_if_missing(
         try:
             store.log_health(repo, "LAZY_CAPTURE_FAILED", repr(exc))
             _record_lazy_capture_attempt(store)
-        except Exception:  # noqa: BLE001 — breadcrumb/throttle are themselves best-effort.
+        except Exception:  # breadcrumb/throttle are themselves best-effort.
             pass
         return
 
@@ -753,7 +753,7 @@ def _attest_content_hashes(
                     by_sei[sei] = content_hash
         finally:
             _close_if_supported(client)
-    except Exception as exc:  # noqa: BLE001 — advisory consult; never block the worklist.
+    except Exception as exc:  # advisory consult; never block the worklist.
         # Observability breadcrumb: record the cause; the returned (partial/empty)
         # by_sei is byte-for-byte unchanged, so the attest consumer still honestly
         # leaves entities attestation_incomplete — never a faked-good match. The
@@ -761,7 +761,7 @@ def _attest_content_hashes(
         # into a raised worklist read.
         try:
             store.log_health(repo, "ATTEST_HASH_FAILED", repr(exc))
-        except Exception:  # noqa: BLE001 — breadcrumb is itself best-effort.
+        except Exception:  # breadcrumb is itself best-effort.
             pass
         return by_sei
     return by_sei
@@ -921,6 +921,36 @@ def reverify_worklist(
         # Load ONLY the worklist's change commits (no full-table scan — push the
         # entity filter into SQL) and group by key id; load verification events once.
         worklist_key_ids = [k for k in (*changed_key_ids, *affected_key_ids) if k is not None]
+        # U2 — per-row identity ECHO (the real silent-wrong-answer fix). The length
+        # asserts above catch a CARDINALITY drift but NOT an equal-length ORDER drift:
+        # if a future filter/reorder permutes `changed` on one axis only, the lengths
+        # still match and the WRONG verification block silently attaches to the WRONG
+        # entity. Pair each key_id with the locator that key_id resolves to via an
+        # INDEPENDENT by-id lookup (entity_keys_by_ids is keyed by id, so the pairing
+        # is correct by construction regardless of row ORDER). render then echoes the
+        # entity row's OWN locator (which travels with `changed`) back against this
+        # key-id-sourced locator (which travels with the key id): equal on valid input,
+        # DIVERGENT under an order drift — at which point render raises LOUDLY instead
+        # of mis-attaching. Sourcing the frozen locator from `changed` itself would be
+        # tautological (same provenance, copied twice); the by-id lookup is the second,
+        # genuinely independent provenance the echo needs. `locator` is the
+        # SEI-orthogonal identity the FROZEN view always carries (refs.py:62 — sei is
+        # nullable, locator is not); this does NOT add entity_key_id back into the
+        # frozen view (the contract stays untouched).
+        _key_locators = store.entity_keys_by_ids(repo, worklist_key_ids)
+
+        def _locator_for_kid(kid: int | None) -> str | None:
+            if kid is None:
+                return None
+            loc = _key_locators.get(kid, {}).get("locator")
+            return loc if isinstance(loc, str) and loc else None
+
+        changed_key_pairs: list[tuple[int | None, str | None]] = [
+            (kid, _locator_for_kid(kid)) for kid in changed_key_ids
+        ]
+        affected_key_pairs: list[tuple[int | None, str | None]] = [
+            (kid, _locator_for_kid(kid)) for kid in affected_key_ids
+        ]
         verification_events = store.list_verification_events(repo)
         local_source_configured = len(verification_events) > 0
         changes_by_key: dict[int, list[str]] = {}
@@ -969,8 +999,8 @@ def reverify_worklist(
             completeness=completeness,
             staleness=staleness,
             work_client=work_client,
-            changed_key_ids=changed_key_ids,
-            affected_key_ids=affected_key_ids,
+            changed_key_ids=changed_key_pairs,
+            affected_key_ids=affected_key_pairs,
             verification_for=verification_for,
         )
         items = apply_filters(items, tool="warpline_reverify_worklist_get", filters=filters)
