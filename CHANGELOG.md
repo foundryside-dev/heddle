@@ -10,6 +10,8 @@ is a new contract URI, never a mutation of `v1`.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-01
+
 ### Added
 - **`warpline_project_status_get` / `project_status` — read-only store-binding
   probe (`warpline.project_status.v1`).** A new MCP tool that reports whether THIS
