@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from warpline.reresolve import sweep_reresolve_sei
 from warpline.store import WarplineStore
 
@@ -378,3 +380,78 @@ def test_merge_repoints_co_change_pairs_and_snapshot_edges(tmp_path: Path) -> No
         # The orphan null key itself is gone.
         keys = {int(k["id"]) for k in store.list_entity_keys(repo)}
         assert null_id not in keys
+
+        # U1 forward-regression guard: after the full real merge surface (clean
+        # repoint + count-merge collision + self-pair collapse + snapshot-edge
+        # collision drop), every entity_key_id referenced by the FK-less derived
+        # tables still resolves to an entity_keys row. This passes today (the
+        # merge is already correct) and is a tripwire: it goes red if a FUTURE
+        # edit drops a _repoint_* call, mis-orders the DELETE-before-repoint, or
+        # adds a third entity_key_id-keyed table the merge leaves unrepointed.
+        # Deliberately asserts NOTHING about a twin->twin snapshot self-edge:
+        # that is a valid (non-orphan) row, so the invariant never fires on it,
+        # and asserting its absence would silently enact the out-of-scope U11
+        # change.
+        store._assert_no_orphans()
+
+
+def test_assert_no_orphans_catches_orphan_co_change_pair(tmp_path: Path) -> None:
+    """U1 teeth (co_change_pairs branch): a bogus entity_key_id is caught.
+
+    The entity_key_id_a/_b columns carry NO foreign key (even with
+    foreign_keys=ON), so a row referencing a non-existent entity_keys id INSERTs
+    cleanly. The invariant must detect it. Isolated to its own store with no
+    snapshot_edges orphan so this branch is proven independently — the method
+    raises on the first orphan found, so a shared DB would never exercise both.
+    """
+
+    repo = tmp_path / "repo"
+    with _open(tmp_path) as store:
+        repo_id = store.ensure_repo(repo)
+        real_id = store.ensure_entity_key(
+            repo_id, locator=_LOCATOR, sei="loomweave:eid:real", commit_sha="c1"
+        )
+        bogus_id = 999_999
+        assert bogus_id != real_id
+        # No FK on these columns: this INSERT succeeds and orphans the row.
+        store.conn.execute(
+            "INSERT INTO co_change_pairs(repo_id, entity_key_id_a, entity_key_id_b, "
+            "co_change_count, last_co_change, last_commit_sha) VALUES (?, ?, ?, ?, ?, ?)",
+            (repo_id, min(real_id, bogus_id), max(real_id, bogus_id), 1, None, None),
+        )
+        store.conn.commit()
+
+        with pytest.raises(RuntimeError):
+            store._assert_no_orphans()
+
+
+def test_assert_no_orphans_catches_orphan_snapshot_edge(tmp_path: Path) -> None:
+    """U1 teeth (snapshot_edges branch): a bogus source/target id is caught.
+
+    snapshot_edges' only FK is snapshot_id; source_entity_key_id /
+    target_entity_key_id have NO foreign key. A valid snapshot with a bogus
+    target id therefore INSERTs cleanly (a bogus snapshot_id would instead trip
+    the snapshot_id FK and never reach the invariant). Isolated to its own store
+    with no co_change_pairs orphan so this branch is proven independently.
+    """
+
+    repo = tmp_path / "repo"
+    with _open(tmp_path) as store:
+        repo_id = store.ensure_repo(repo)
+        real_id = store.ensure_entity_key(
+            repo_id, locator=_LOCATOR, sei="loomweave:eid:real", commit_sha="c1"
+        )
+        bogus_id = 999_999
+        assert bogus_id != real_id
+        snap_id = store.create_edge_snapshot(repo_id, "c1", "loomweave", "v1", "FULL")
+        # Valid snapshot_id (FK satisfied), bogus target id (no FK): orphans.
+        store.append_snapshot_edge(
+            snap_id,
+            source_entity_key_id=real_id,
+            target_entity_key_id=bogus_id,
+            edge_kind="calls",
+            confidence="high",
+        )
+
+        with pytest.raises(RuntimeError):
+            store._assert_no_orphans()

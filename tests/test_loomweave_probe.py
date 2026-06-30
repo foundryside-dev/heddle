@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -295,3 +296,279 @@ def test_mcp_client_returns_matching_envelope_before_deadline(tmp_path: Path) ->
     deadline = fake_monotonic() + client.timeout
     result = client._read_envelope(_FakeProc(), request_id=request_id, deadline=deadline)  # type: ignore[arg-type]
     assert result == envelope
+
+
+# ---------------------------------------------------------------------------
+# U8 — fd/selector-path hardening: multi-chunk reassembly, EOF-mid-frame,
+# oversized-frame cap (max_frame_bytes), and the selector-path deadline.
+# These exercise the SAME selectors+os.read+_stdout_buffer loop the real
+# loomweave subprocess drives — not the no-fileno readline fallback.
+# ---------------------------------------------------------------------------
+def _make_pipe_proc() -> tuple[int, object]:
+    """Return (write_fd, proc) where proc.stdout.fileno() is a live pipe read fd."""
+
+    read_fd, write_fd = os.pipe()
+
+    class _PipeReader:
+        def fileno(self) -> int:
+            return read_fd
+
+        def readline(self) -> bytes:  # pragma: no cover - selector path is used
+            return os.read(read_fd, 4096)
+
+        def close(self) -> None:
+            try:
+                os.close(read_fd)
+            except OSError:
+                pass
+
+    class _PipeProc:
+        def __init__(self) -> None:
+            self.stdout = _PipeReader()
+            self.stdin: object | None = None
+            self.stderr = None
+            self._closed = False
+
+        def poll(self) -> int | None:
+            return 0 if self._closed else None
+
+        def terminate(self) -> None:
+            self._closed = True
+
+        def wait(self, timeout: float | None = None) -> int:
+            self._closed = True
+            return 0
+
+        def kill(self) -> None:
+            self._closed = True
+
+    return write_fd, _PipeProc()
+
+
+def test_mcp_client_reassembles_frame_split_across_multiple_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A JSON-RPC envelope delivered in two os.write halves split mid-frame over a
+    real pipe; the reader exposes a working fileno() so the selectors+os.read+
+    _stdout_buffer accumulation path runs and reassembles the frame.
+
+    To guarantee accumulation spans MULTIPLE os.read calls (not a single 4096-byte
+    read), os.read is wrapped to return at most 8 bytes per call.
+    """
+
+    request_id = 11
+    envelope = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"ok": True, "result": {"entity": {"id": "y"}}}),
+                }
+            ]
+        },
+    }
+    frame = json.dumps(envelope).encode() + b"\n"
+
+    real_os_read = os.read
+
+    def small_read(fd: int, n: int) -> bytes:
+        return real_os_read(fd, min(n, 8))
+
+    monkeypatch.setattr("warpline.loomweave.os.read", small_read)
+
+    write_fd, proc = _make_pipe_proc()
+    # Split the frame mid-way across two writes; no newline in the first half.
+    half = len(frame) // 2
+    os.write(write_fd, frame[:half])
+    os.write(write_fd, frame[half:])
+    os.close(write_fd)
+
+    client = LoomweaveMcpClient(tmp_path, timeout=60.0)
+    try:
+        # Finite, generous deadline: the selector branch passes `remaining` to
+        # selectors.select(), which overflows time_t for an astronomically large
+        # value, so a real (but far-off) monotonic deadline is used here.
+        deadline = time.monotonic() + 30.0
+        assert client._read_envelope(proc, request_id, deadline) == envelope  # type: ignore[arg-type]
+    finally:
+        proc.stdout.close()  # type: ignore[attr-defined]
+
+
+def test_mcp_client_reassembles_deeply_chunked_frame_without_recursion_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid envelope delivered in MORE os.read slices than the interpreter's
+    recursion limit must still reassemble. This pins the recursion->loop conversion:
+    on a tail-recursive _readline, accumulating one stack frame per os.read chunk blows
+    sys.getrecursionlimit() (~1000) at ~4 MiB on a real stream — below the 16 MiB
+    default cap — and propagates RecursionError (a RuntimeError subclass NOT caught by
+    call_tool), leaking the subprocess. With an 8-byte-per-read slice, an >8 KiB frame
+    is delivered in >1000 reads, so a recursive implementation raises RecursionError
+    before the frame completes; a bounded loop reassembles it.
+
+    Uses the DEFAULT max_frame_bytes (16 MiB) so this exercises the production default's
+    accumulation mechanism, not a lowered test cap.
+    """
+
+    request_id = 13
+    filler = "p" * 9000  # > 1000 * 8 bytes, so > recursion-limit os.read slices
+    envelope = {
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": {
+            "content": [
+                {
+                    "type": "text",
+                    "text": json.dumps({"ok": True, "result": {"pad": filler}}),
+                }
+            ]
+        },
+    }
+    frame = json.dumps(envelope).encode() + b"\n"
+    assert len(frame) > 1000 * 8  # confirm >recursion-limit reads at 8 bytes/read
+    assert len(frame) < 64 * 1024  # stay under the pipe buffer so os.write won't block
+
+    real_os_read = os.read
+
+    def small_read(fd: int, n: int) -> bytes:
+        return real_os_read(fd, min(n, 8))
+
+    monkeypatch.setattr("warpline.loomweave.os.read", small_read)
+
+    write_fd, proc = _make_pipe_proc()
+    os.write(write_fd, frame)
+    os.close(write_fd)
+
+    client = LoomweaveMcpClient(tmp_path, timeout=60.0)  # default 16 MiB cap
+    try:
+        deadline = time.monotonic() + 30.0
+        assert client._read_envelope(proc, request_id, deadline) == envelope  # type: ignore[arg-type]
+    finally:
+        proc.stdout.close()  # type: ignore[attr-defined]
+
+
+def test_mcp_client_eof_mid_frame_degrades_without_crash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A partial frame (no trailing newline) then EOF must degrade to RuntimeError —
+    NOT a TypeError/IndexError crash and NOT a hang — and must close the process.
+    """
+
+    real_os_read = os.read
+
+    def small_read(fd: int, n: int) -> bytes:
+        return real_os_read(fd, min(n, 8))
+
+    monkeypatch.setattr("warpline.loomweave.os.read", small_read)
+
+    write_fd, proc = _make_pipe_proc()
+    os.write(write_fd, b'{"jsonrpc": "2.0", "id": 1, "resu')  # partial, no newline
+    os.close(write_fd)  # EOF
+
+    client = LoomweaveMcpClient(tmp_path, timeout=60.0)
+    client._process = proc  # type: ignore[assignment]
+    deadline = time.monotonic() + 30.0
+    with pytest.raises(RuntimeError):
+        client._read_envelope(proc, request_id=1, deadline=deadline)  # type: ignore[arg-type]
+    proc.stdout.close()  # type: ignore[attr-defined]
+
+
+def test_mcp_client_oversized_frame_degrades_via_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A long newline-less byte run fed through the fd path must trip max_frame_bytes
+    and degrade honestly: call_tool raises RuntimeError (the cap's TimeoutError funnels
+    through call_tool's handler) AND self._process is None afterward (subprocess closed,
+    not leaked).
+
+    The cap (256) is set ABOVE one os.read slice (8 bytes) so the read loop must
+    ACCUMULATE across many os.read calls before the cap fires — exercising the same
+    bounded-loop accumulation path production uses at its 16 MiB default, not a
+    single-chunk shortcut. On unfixed code (no cap), this loop accretes the buffer
+    without ever raising the cap signal.
+    """
+
+    real_os_read = os.read
+
+    def small_read(fd: int, n: int) -> bytes:
+        return real_os_read(fd, min(n, 8))
+
+    monkeypatch.setattr("warpline.loomweave.os.read", small_read)
+
+    write_fd, proc = _make_pipe_proc()
+    os.write(write_fd, b"x" * 4096)  # >256-byte newline-less run
+    os.close(write_fd)
+
+    client = LoomweaveMcpClient(tmp_path, timeout=60.0, max_frame_bytes=256)
+    client._process = proc  # type: ignore[assignment]
+
+    class _Stdin:
+        def write(self, data: bytes) -> int:
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    proc.stdin = _Stdin()  # type: ignore[attr-defined]
+
+    with pytest.raises(RuntimeError):
+        client.call_tool("entity_neighborhood_get", {"id": "x", "limit": 100})
+    assert client._process is None
+
+
+def test_mcp_client_deadline_fires_via_selector_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty (never-written) real pipe with a working fileno(), a tiny timeout, and a
+    fast-advancing fake monotonic must trip TimeoutError via the selectors.select(remaining)
+    branch — the branch the real subprocess fd path uses — within a bounded number of ticks.
+    Complements Test A (which drives the no-fileno readline fallback).
+    """
+
+    tick = [0.0]
+
+    def fake_monotonic() -> float:
+        tick[0] += 1.0
+        return tick[0]
+
+    # Force selector.select to return immediately with no events regardless of the
+    # remaining timeout, so the test cannot block on the empty pipe.
+    monkeypatch.setattr(
+        "warpline.loomweave.selectors.DefaultSelector",
+        lambda: _NoEventSelector(),
+    )
+
+    write_fd, proc = _make_pipe_proc()
+    # A large timeout keeps the per-request deadline well ahead of the handful of
+    # monotonic ticks that precede the select() call, so the TimeoutError is raised by
+    # the selector branch's "no events" path (the line a real hung sibling hits), NOT
+    # by the top-of-_readline deadline guard. The match= pins that branch: a top-guard
+    # raise would carry "exceeded the per-request deadline" instead and fail RED.
+    client = LoomweaveMcpClient(tmp_path, timeout=100.0, monotonic=fake_monotonic)
+    deadline = fake_monotonic() + client.timeout
+    try:
+        with pytest.raises(TimeoutError, match="timed out before returning a response"):
+            client._read_envelope(proc, request_id=99, deadline=deadline)  # type: ignore[arg-type]
+    finally:
+        os.close(write_fd)
+        proc.stdout.close()  # type: ignore[attr-defined]
+
+
+class _NoEventSelector:
+    """A selectors.DefaultSelector stand-in that registers fds but always reports
+    zero ready events — emulating a pipe with no data, deterministically and without
+    blocking on wall-clock time."""
+
+    def register(self, fileobj: object, events: int) -> None:
+        return None
+
+    def select(self, timeout: float | None = None) -> list[object]:
+        return []
+
+    def close(self) -> None:
+        return None

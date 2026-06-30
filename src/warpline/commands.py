@@ -5,17 +5,32 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from warpline._attest import worklist_risk
 from warpline._blast import enrich_blast, resolve_changed_inputs, rev_range_commits
+from warpline._completeness import compute_impact_completeness
 from warpline._enrichment import (
     EDGES_FOR_COMPLETENESS,
     completeness_warnings,
     edges_enrichment,
+    requirements_reason,
+    requirements_reason_for,
     sei_reason,
     staleness_warnings,
 )
 from warpline.envelope import build_envelope, enrichment_state
-from warpline.errors import BadRevisionError, InternalError, InvalidChangedRefsError
-from warpline.federation import LegisClient, RiskClient, consult_federation
+from warpline.errors import (
+    BadRevisionError,
+    InternalError,
+    InvalidChangedRefsError,
+    MissingRequiredFieldError,
+)
+from warpline.federation import (
+    LegisClient,
+    RequirementsClient,
+    RiskClient,
+    consult_federation,
+)
+from warpline.git import commits_between, is_ancestor, resolve_commit
 from warpline.listing import (
     apply_filters,
     apply_group_by,
@@ -28,6 +43,7 @@ from warpline.loomweave import (
     LoomweaveMcpClient,
     LoomweaveProbe,
     loomweave_resolve_qualnames,
+    resolve_content_hash_for_locator,
 )
 from warpline.propagation import blast_radius as compute_blast_radius
 from warpline.refs import (
@@ -45,6 +61,7 @@ from warpline.store import (
     default_store_path,
     read_store_binding,
 )
+from warpline.verification import compose_verification_freshness
 
 # FROZEN schema URIs (one contract per tool; endorsed name and shim share it).
 SCHEMA_CHANGE_LIST = "warpline.change_list.v1"
@@ -53,6 +70,7 @@ SCHEMA_ENTITY_CHURN_COUNT = "warpline.entity_churn_count.v1"
 SCHEMA_IMPACT_RADIUS = "warpline.impact_radius.v1"
 SCHEMA_REVERIFY_WORKLIST = "warpline.reverify_worklist.v1"
 SCHEMA_EDGE_SNAPSHOT = "warpline.edge_snapshot.v1"
+SCHEMA_VERIFICATION_RECORD = "warpline.verification_record.v1"
 SCHEMA_PROJECT_STATUS = "warpline.project_status.v1"
 
 
@@ -63,7 +81,18 @@ def session_context(repo: Path) -> str:
         with WarplineStore.open(default_store_path(repo)) as store:
             events = store.list_change_events(repo)
             snapshot = store.latest_snapshot(repo)
-    except Exception:
+    except Exception as exc:  # fail-soft SessionStart hook; never raise.
+        # Observability breadcrumb: record the cause so an operator can tell
+        # 'store absent' from 'store present but erroring'. The store handle is
+        # opened INSIDE the try (the open() itself may be the failure), so it is
+        # not in scope here — re-open a fresh short-lived store to log, mirroring
+        # the cli.py HOOK_INGEST_FAILED precedent. The re-open is itself guarded
+        # so a genuinely dead store still returns the honest one-liner.
+        try:
+            with WarplineStore.open(default_store_path(repo)) as health_store:
+                health_store.log_health(repo, "SESSION_CONTEXT_FAILED", repr(exc))
+        except Exception:  # fail-soft; a dead store must still return the honest one-liner.
+            pass
         return "warpline: temporal store unavailable"
     if not events:
         return "warpline: 0 change events tracked (run `warpline backfill`)"
@@ -237,18 +266,26 @@ def change_list(
     with WarplineStore.open(default_store_path(repo)) as store:
         events = store.list_change_events(repo, commit_shas=commit_shas)
         items: list[dict[str, Any]] = []
-        changed_refs: list[dict[str, str]] = []
-        seen_refs: set[tuple[str, str]] = set()
-        key_ids: list[int] = []
+        # change_id -> (changed_ref, entity_key_id): the per-event follow-up SEED
+        # inputs, rebuilt from the FILTERED set below so the reverify/blast
+        # next_actions and data.changed_refs narrow with a filter too — not just
+        # the visible items. Keyed by the unique change_id so the rebuild is
+        # order-preserving and byte-identical to the per-event source when no
+        # filter is active (event_key_id is read from the event, never the view).
+        seed_by_change_id: dict[str, tuple[dict[str, str], Any]] = {}
         has_sei = False
         for event in events:
             path = str(event.get("path"))
             view = entity_view(event, include_key_id=True, path=path)
             if view["sei"]:
+                # whether the underlying (unfiltered) change-set resolved any SEI:
+                # an enrichment posture, not a next_action seed, so it stays on the
+                # FULL set (unlike changed_refs/key_ids, which DO narrow per filter).
                 has_sei = True
+            change_id = f"warpline:change:{event.get('change_event_id')}"
             items.append(
                 {
-                    "change_id": f"warpline:change:{event.get('change_event_id')}",
+                    "change_id": change_id,
                     "entity": view,
                     "change_kind": event.get("change_kind"),
                     "actor": event.get("actor"),
@@ -256,18 +293,28 @@ def change_list(
                     "changed_at": event.get("changed_at"),
                 }
             )
-            ref = changed_ref_for_row(event)
-            ref_key = (ref["kind"], ref["value"])
-            if ref_key not in seen_refs:
-                seen_refs.add(ref_key)
-                changed_refs.append(ref)
-            key_id = event.get("entity_key_id")
-            if isinstance(key_id, int) and key_id not in key_ids:
-                key_ids.append(key_id)
+            seed_by_change_id[change_id] = (
+                changed_ref_for_row(event),
+                event.get("entity_key_id"),
+            )
 
         # Filter → sort → overflow-bound → page: the list-ergonomics pipeline,
         # each step honoring its advertised knob or rejecting it loudly.
         items = apply_filters(items, tool="warpline_change_list", filters=filters)
+        # Seeds from the FILTERED (pre-page) set: a path_prefix/actor/since filter
+        # must narrow the advertised reverify/blast scope too, or following the
+        # next_action rechecks unfiltered changes. Deduped, order-preserving.
+        changed_refs: list[dict[str, str]] = []
+        key_ids: list[int] = []
+        seen_refs: set[tuple[str, str]] = set()
+        for item in items:
+            ref, key_id = seed_by_change_id[item["change_id"]]
+            ref_key = (ref["kind"], ref["value"])
+            if ref_key not in seen_refs:
+                seen_refs.add(ref_key)
+                changed_refs.append(ref)
+            if isinstance(key_id, int) and key_id not in key_ids:
+                key_ids.append(key_id)
         items = apply_sort(
             items, tool="warpline_change_list", sort_by=sort_by, sort_order=sort_order
         )
@@ -314,7 +361,6 @@ def change_list(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_CHANGE_LIST,
             query=query,
@@ -403,7 +449,6 @@ def entity_timeline(
         }
         sei_state = "present" if entity_out["sei"] else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         if rename_feed is not None:
             governance_reason = reason("clean")
         else:
@@ -507,7 +552,6 @@ def entity_churn_count(
         }
         sei_state = "present" if has_sei else "absent"
         sei_triple = sei_reason(sei_state)
-        assert sei_triple is not None  # present/absent are always in-vocab
         return build_envelope(
             SCHEMA_ENTITY_CHURN_COUNT,
             query=query,
@@ -663,8 +707,64 @@ def _lazy_capture_if_missing(
         # store's state is consistent (the snapshot itself short-circuits future
         # reads).
         _clear_lazy_capture_marker(store)
-    except Exception:  # noqa: BLE001 — capture is advisory; never block the read.
+    except Exception as exc:  # capture is advisory; never block the read.
+        # U3 breadcrumb + U4 throttle-on-raise. The unavailable-probe branch above
+        # already stamps the marker before its early return; here we cover the
+        # OTHER failure mode — a capture that *raised* (e.g. loomweave reachable but
+        # erroring mid-capture) — so a hot read path does not re-pay the probe
+        # spin-up on every call. Both side effects write to the store, so a store
+        # that died mid-capture is guarded against turning this advisory swallow
+        # into a raised read (the 'never raises' contract above must hold).
+        try:
+            store.log_health(repo, "LAZY_CAPTURE_FAILED", repr(exc))
+            _record_lazy_capture_attempt(store)
+        except Exception:  # breadcrumb/throttle are themselves best-effort.
+            pass
         return
+
+
+def _attest_content_hashes(
+    store: WarplineStore,
+    repo: Path,
+    affected_seis: list[str],
+    sei_to_locator: dict[str, str],
+    loomweave_command: str | None,
+) -> dict[str, str]:
+    """Build ``{sei: current content_hash}`` for the worklist's affected SEIs via
+    loomweave, for the risk-as-verification consult. ``sei_to_locator`` is built by
+    the caller from the FULL (pre-page) worklist set, so a > limit worklist still
+    resolves every affected entity. Fail-soft and read-only: an unreachable
+    loomweave (or an unresolvable entity) yields no hash for that SEI, so the attest
+    consumer honestly leaves it unmatched (``attestation_incomplete``) — NEVER a
+    faked-good match. One ``entity_resolve`` round trip per SEI (batching is a clean
+    later optimization); only paid when an attest bundle was supplied."""
+
+    by_sei: dict[str, str] = {}
+    try:
+        command = loomweave_command or os.environ.get("WARPLINE_LOOMWEAVE_COMMAND", "loomweave")
+        client = LoomweaveMcpClient(repo=repo, command=command)
+        try:
+            for sei in affected_seis:
+                locator = sei_to_locator.get(sei)
+                if locator is None:
+                    continue
+                content_hash = resolve_content_hash_for_locator(client, locator)
+                if content_hash:
+                    by_sei[sei] = content_hash
+        finally:
+            _close_if_supported(client)
+    except Exception as exc:  # advisory consult; never block the worklist.
+        # Observability breadcrumb: record the cause; the returned (partial/empty)
+        # by_sei is byte-for-byte unchanged, so the attest consumer still honestly
+        # leaves entities attestation_incomplete — never a faked-good match. The
+        # log is itself guarded so a dead store cannot promote this advisory swallow
+        # into a raised worklist read.
+        try:
+            store.log_health(repo, "ATTEST_HASH_FAILED", repr(exc))
+        except Exception:  # breadcrumb is itself best-effort.
+            pass
+        return by_sei
+    return by_sei
 
 
 # ---------------------------------------------------------------------------
@@ -765,7 +865,9 @@ def reverify_worklist(
     include_federation: bool = False,
     risk_client: RiskClient | None = None,
     legis_client: LegisClient | None = None,
+    requirements_client: RequirementsClient | None = None,
     loomweave_command: str | None = None,
+    attest_bundle: Any = None,
 ) -> dict[str, Any]:
     refs = parse_changed_refs(changed_refs)
     with WarplineStore.open(default_store_path(repo)) as store:
@@ -783,17 +885,171 @@ def reverify_worklist(
         changed, affected = enrich_blast(store, repo, result)
         completeness = result["completeness"]
         staleness = result["staleness"]
+
+        # Rung 2 Track B — verification freshness (advisory, never gates).
+        # Align entity_key_id to changed/affected ORDER. enrich_blast preserves
+        # the order of result["changed"]/result["affected"] (verified _blast.py:142-157),
+        # whose rows carry entity_key_id; the FROZEN {locator, sei} entity view never
+        # does. The positional alignment changed[i] <-> changed_key_ids[i] is the
+        # invariant render_reverify_worklist relies on to attach the block.
+        changed_key_ids: list[int | None] = [
+            r.get("entity_key_id") if isinstance(r.get("entity_key_id"), int) else None
+            for r in result.get("changed", [])
+        ]
+        affected_key_ids: list[int | None] = [
+            r.get("entity_key_id") if isinstance(r.get("entity_key_id"), int) else None
+            for r in result.get("affected", [])
+        ]
+        # U2 — loud positional invariant: changed[i] <-> changed_key_ids[i] (and the
+        # affected axis) MUST stay 1:1, since render_reverify_worklist attaches each
+        # verification block by position (zip(..., strict=True)). A length mismatch
+        # already raises today, but as an opaque ValueError deep in reverify.py; this
+        # call-site assert hoists it into a named diagnostic that fires earlier and
+        # names the _blast<->commands order axis. Behavior-preserving: both lists
+        # derive from the same result["changed"]/["affected"] rows (enrich_blast is
+        # order-preserving, _blast.py:142-144), so this cannot fire on valid input.
+        assert len(changed) == len(changed_key_ids), (
+            "reverify positional invariant broken: changed/changed_key_ids drift "
+            f"({len(changed)} != {len(changed_key_ids)}) — the _blast<->commands "
+            "order alignment render_reverify_worklist relies on no longer holds"
+        )
+        assert len(affected) == len(affected_key_ids), (
+            "reverify positional invariant broken: affected/affected_key_ids drift "
+            f"({len(affected)} != {len(affected_key_ids)}) — the _blast<->commands "
+            "order alignment render_reverify_worklist relies on no longer holds"
+        )
+        # Load ONLY the worklist's change commits (no full-table scan — push the
+        # entity filter into SQL) and group by key id; load verification events once.
+        worklist_key_ids = [k for k in (*changed_key_ids, *affected_key_ids) if k is not None]
+        # U2 — per-row identity ECHO (the real silent-wrong-answer fix). The length
+        # asserts above catch a CARDINALITY drift but NOT an equal-length ORDER drift:
+        # if a future filter/reorder permutes `changed` on one axis only, the lengths
+        # still match and the WRONG verification block silently attaches to the WRONG
+        # entity. Pair each key_id with the locator that key_id resolves to via an
+        # INDEPENDENT by-id lookup (entity_keys_by_ids is keyed by id, so the pairing
+        # is correct by construction regardless of row ORDER). render then echoes the
+        # entity row's OWN locator (which travels with `changed`) back against this
+        # key-id-sourced locator (which travels with the key id): equal on valid input,
+        # DIVERGENT under an order drift — at which point render raises LOUDLY instead
+        # of mis-attaching. Sourcing the frozen locator from `changed` itself would be
+        # tautological (same provenance, copied twice); the by-id lookup is the second,
+        # genuinely independent provenance the echo needs. `locator` is the
+        # SEI-orthogonal identity the FROZEN view always carries (refs.py:62 — sei is
+        # nullable, locator is not); this does NOT add entity_key_id back into the
+        # frozen view (the contract stays untouched).
+        _key_locators = store.entity_keys_by_ids(repo, worklist_key_ids)
+
+        def _locator_for_kid(kid: int | None) -> str | None:
+            if kid is None:
+                return None
+            loc = _key_locators.get(kid, {}).get("locator")
+            return loc if isinstance(loc, str) and loc else None
+
+        changed_key_pairs: list[tuple[int | None, str | None]] = [
+            (kid, _locator_for_kid(kid)) for kid in changed_key_ids
+        ]
+        affected_key_pairs: list[tuple[int | None, str | None]] = [
+            (kid, _locator_for_kid(kid)) for kid in affected_key_ids
+        ]
+        verification_events = store.list_verification_events(repo)
+        local_source_configured = len(verification_events) > 0
+        changes_by_key: dict[int, list[str]] = {}
+        for ce in store.list_change_events_for_key_ids(repo, worklist_key_ids):
+            kid = ce.get("entity_key_id")
+            if isinstance(kid, int):
+                sha = str(ce.get("commit_sha"))
+                bucket = changes_by_key.setdefault(kid, [])
+                # One entity can have several change_event rows for the SAME commit
+                # (the UNIQUE key is (repo, entity_key_id, commit_sha, path, change_kind),
+                # not commit_sha alone). Collapse adjacent duplicates (rows are
+                # oldest-first) so the covers() fan-out isn't wasted and
+                # entity_change_commits[-1] stays the true latest distinct commit.
+                if not bucket or bucket[-1] != sha:
+                    bucket.append(sha)
+
+        def _covers(verified_commit: str, change_commit: str) -> bool | None:
+            # NOTE the argument inversion: a change is COVERED by a verification
+            # iff the change commit is an ancestor-or-equal of the verified commit
+            # (the gate ran at/after the change). So covers(verified, change) maps
+            # to is_ancestor(ancestor=change_commit, descendant=verified_commit).
+            return is_ancestor(repo, change_commit, verified_commit)
+
+        def _between(ancestor: str, descendant: str) -> int | None:
+            return commits_between(repo, ancestor, descendant)
+
+        _verif_cache: dict[int, dict[str, Any]] = {}
+
+        def verification_for(kid: int | None) -> dict[str, Any]:
+            # kid is None for an affected row that carried no entity_key_id;
+            # compose([], ...) honestly yields "unverified" (nothing to verify).
+            if kid is None:
+                return compose_verification_freshness([], verification_events, _covers, _between)
+            if kid not in _verif_cache:
+                _verif_cache[kid] = compose_verification_freshness(
+                    changes_by_key.get(kid, []),
+                    verification_events,
+                    _covers,
+                    _between,
+                )
+            return _verif_cache[kid]
+
         items, work_seen, filigree_candidates = render_reverify_worklist(
             changed=changed,
             affected=affected,
             completeness=completeness,
             staleness=staleness,
             work_client=work_client,
+            changed_key_ids=changed_key_pairs,
+            affected_key_ids=affected_key_pairs,
+            verification_for=verification_for,
         )
         items = apply_filters(items, tool="warpline_reverify_worklist_get", filters=filters)
+        # Advisory: stale-of-trust first. Stable presort run JUST BEFORE apply_sort
+        # so apply_sort stays the PRIMARY key (last stable sort wins) and stale-first
+        # is the secondary tiebreak within ties. Never reorders across the primary
+        # key; never removes an item. Relies on apply_sort being a stable sorted()
+        # (listing.py:332) with a sort_by=None passthrough (listing.py:306).
+        # The sort key is (depth, state_rank) so depth stays the default primary
+        # ordering when apply_sort is a passthrough (sort_by=None) AND stale-first
+        # serves as the secondary tiebreak within same-depth groups.
+        _state_rank = {"stale": 0, "unavailable": 1, "unverified": 2, "fresh": 3}
+        items.sort(
+            key=lambda it: (
+                it.get("depth", 0),
+                _state_rank.get(it["verification"]["state"], 3),
+            )
+        )
         items = apply_sort(
             items, tool="warpline_reverify_worklist_get", sort_by=sort_by, sort_order=sort_order
         )
+        # verification_summary reflects the post-filter, pre-page set (mirrors how
+        # completeness/staleness describe the requested set, not the current page).
+        verification_summary = {
+            "fresh": sum(1 for it in items if it["verification"]["state"] == "fresh"),
+            "stale": sum(1 for it in items if it["verification"]["state"] == "stale"),
+            "unverified": sum(1 for it in items if it["verification"]["state"] == "unverified"),
+            "unavailable": sum(1 for it in items if it["verification"]["state"] == "unavailable"),
+            "local_source_configured": local_source_configured,
+        }
+        # Risk-as-verification (Rung 2): the SEIs of the FULL filtered+sorted set
+        # (pre-page, like verification_summary) — the verdict describes the whole
+        # change's worklist, never a single page. Deduped, order-preserving. The
+        # sei->locator map is captured HERE, from the full set, NOT from the
+        # post-apply_page `items` below — otherwise an affected entity that fell off
+        # page 1 would have no locator, no content_hash, and a > limit worklist
+        # could never read proven-good even when the bundle attests every entity.
+        affected_seis: list[str] = []
+        affected_sei_locators: dict[str, str] = {}
+        _seen_seis: set[str] = set()
+        for it in items:
+            entity = it.get("entity", {})
+            sei = entity.get("sei")
+            if isinstance(sei, str) and sei and sei not in _seen_seis:
+                _seen_seis.add(sei)
+                affected_seis.append(sei)
+                loc = entity.get("locator")
+                if isinstance(loc, str) and loc:
+                    affected_sei_locators[sei] = loc
         # group_by buckets the FULL filtered+sorted list (the grouped view is a
         # complete projection, not a page); the flat list still paginates.
         grouped = apply_group_by(items, tool="warpline_reverify_worklist_get", group_by=group_by)
@@ -808,6 +1064,7 @@ def reverify_worklist(
                 work_client=work_client,
                 risk_client=risk_client,
                 legis_client=legis_client,
+                requirements_client=requirements_client,
             )
             if include_federation
             else None
@@ -822,14 +1079,55 @@ def reverify_worklist(
         # one. Additive and reversible (D2): this is the proven-need demonstration
         # that earns freezing the wardline/legis inbound shape, not a pre-promised
         # contract; it does not lock the RESERVED-SHAPE inbound.
-        risk_state, gov_state = _merge_federation_enrichment(items, federation)
+        risk_state, gov_state, req_state = _merge_federation_enrichment(items, federation)
         items, overflow_warnings, overflow = apply_overflow(
             items, repo=repo, tool="warpline_reverify_worklist_get", schema=SCHEMA_REVERIFY_WORKLIST
         )
         items, page = apply_page(items, limit=limit, cursor=cursor)
+        # Federation D1: the self-assessed completeness+staleness of THIS impact
+        # analysis (additive v1 OBJECT, distinct from the FROZEN raw-snapshot
+        # `completeness` STRING above). wardline mirrors this single object verbatim
+        # into its own `producer_completeness` scope-honesty field. Both axes live
+        # inside it: the staleness axis (`as_of` producer timestamp + graph_fresh +
+        # graph_ref) and the completeness axis (status + depth_capped +
+        # unresolved_count). warpline's raw `staleness`/`completeness` are untouched.
+        impact_completeness = compute_impact_completeness(
+            as_of=_now().isoformat(),
+            completeness=completeness,
+            staleness=staleness,
+            unresolved=unresolved,
+            depth_capped=bool(result.get("depth_capped", False)),
+        )
+        # Risk-as-verification (Rung 2): warpline's honest verification posture for
+        # this change. Always emitted. A complete worklist whose every affected
+        # entity is attested clean at its CURRENT body by the PUSHED, UNTRUSTED
+        # wardline-attest-2 `attest_bundle` reads proven-good (echo of wardline's
+        # authority, HMAC unverified); absent/partial/unmatched degrades to
+        # `unavailable` with an explicit machine reason — never a warpline clean.
+        # The per-SEI current content_hash is sourced from loomweave (fail-soft;
+        # only paid when a bundle is supplied — an unreachable loomweave yields no
+        # hashes, so every entity is honestly unmatched, never faked-good).
+        content_hash_by_sei = (
+            _attest_content_hashes(
+                store, repo, affected_seis, affected_sei_locators, loomweave_command
+            )
+            if attest_bundle is not None
+            else {}
+        )
+        risk_verification = worklist_risk(
+            impact_completeness,
+            affected_seis=affected_seis,
+            bundle=attest_bundle,
+            # only paid when a bundle is present (worklist_risk ignores it otherwise)
+            current_commit=resolve_commit(repo, "HEAD") if attest_bundle is not None else None,
+            content_hash_for_sei=content_hash_by_sei.get,
+        )
         data = {
             "completeness": completeness,
+            "impact_completeness": impact_completeness,
+            "risk_verification": risk_verification,
             "staleness": staleness,
+            "verification_summary": verification_summary,
             "resolved": resolved,
             "unresolved": unresolved,
             "items": items,
@@ -869,7 +1167,9 @@ def reverify_worklist(
                 work=work_state,
                 risk=risk_state,
                 governance=gov_state,
+                requirements=req_state,
             ),
+            enrichment_reasons={"requirements": _requirements_reason(federation, req_state)},
             next_actions={"filigree": filigree_candidates},
             warnings=(
                 completeness_warnings(completeness)
@@ -921,26 +1221,82 @@ def _member_scalar(federation: dict[str, Any] | None, member: str) -> str:
     return "present" if int(block.get("entity_count", 0) or 0) > 0 else "absent"
 
 
+def _requirements_scalar(federation: dict[str, Any] | None) -> str:
+    """The envelope-level ``enrichment.requirements`` scalar for the plainweave member.
+
+    A plainweave-SPECIFIC rule (NOT the generic :func:`_member_scalar`) so a reachable
+    producer's per-entity ``unavailable`` is honored, never collapsed to a confident
+    ``absent`` (the no-silent-clean invariant):
+
+      * ``federation is None`` (never asked) or member non-clean (disabled/unreachable)
+        -> ``unavailable``;
+      * ≥1 entity ``present`` (facts returned) -> ``present`` (the present signal wins);
+      * reachable, no present, but ANY per-entity ``unavailable`` -> ``unavailable``
+        (could-not-determine, NEVER absent);
+      * reachable, all entities definitively ``absent`` -> ``absent`` (earned-empty).
+    """
+
+    if federation is None:
+        return "unavailable"
+    block = federation.get("members", {}).get("plainweave", {})
+    if block.get("weft_reason", {}).get("reason_class") != "clean":
+        return "unavailable"
+    if int(block.get("entity_count", 0) or 0) > 0:
+        return "present"
+    if block.get("unavailable_seen"):
+        return "unavailable"
+    return "absent"
+
+
+def _requirements_reason(
+    federation: dict[str, Any] | None, req_state: str
+) -> dict[str, Any]:
+    """The ``enrichment_reasons.requirements`` triple explaining ``req_state``.
+
+    Mirrors :func:`sei_reason`'s direct-scalar mapping for a clean member, but the
+    requirements member adds an unwired/down dimension the local sei dimension lacks:
+
+      * ``federation is None`` (never consulted) -> the static reserved
+        :func:`requirements_reason` (``disabled``) — matches the non-federated envelope;
+      * member ``disabled`` (verb absent) or ``unreachable`` (consult raised) -> that
+        member's OWN federation weft-reason (its cause/fix already recruit the precise
+        fix — install/upgrade, or confirm reachability);
+      * member ``clean`` -> :func:`requirements_reason_for` over the present/absent/
+        unavailable scalar.
+    """
+
+    if federation is None:
+        return requirements_reason()
+    wr: dict[str, Any] = federation.get("members", {}).get("plainweave", {}).get("weft_reason", {})
+    if wr.get("reason_class") in {"disabled", "unreachable"}:
+        return wr
+    return requirements_reason_for(req_state)
+
+
 def _merge_federation_enrichment(
     items: list[dict[str, Any]], federation: dict[str, Any] | None
-) -> tuple[str, str]:
-    """Merge per-entity ``risk``/``governance`` federation facts onto each item's
-    ``enrichment`` block and return the ``(risk_state, governance_state)`` scalars.
+) -> tuple[str, str, str]:
+    """Merge per-entity ``risk``/``governance``/``requirements`` federation facts onto
+    each item's ``enrichment`` block and return the
+    ``(risk_state, governance_state, requirements_state)`` scalars.
 
     Track C: ``consult_federation`` resolves the facts but leaves
-    ``item.enrichment.{risk,governance}`` at the empty scaffold. Copy each
-    federation entity's ``risk``/``governance`` lists onto the matching item
-    (keyed on locator). Called over the FULL filtered+sorted worklist before
-    paging, so a page-2 item is enriched identically to a page-1 one (M3).
+    ``item.enrichment.{risk,governance,requirements}`` at the empty scaffold. Copy each
+    federation entity's lists onto the matching item (keyed on locator). Called over the
+    FULL filtered+sorted worklist before paging, so a page-2 item is enriched
+    identically to a page-1 one (M3).
 
-    Returns the two envelope-level scalars per the R6 rule (see
-    :func:`_member_scalar`). Additive/advisory only; never gates (D2).
+    Returns the three envelope-level scalars: ``risk``/``governance`` per the R6 rule
+    (see :func:`_member_scalar`); ``requirements`` per the plainweave-specific
+    :func:`_requirements_scalar` (which never collapses unavailable into absent).
+    Additive/advisory only; never gates (D2).
     """
 
     risk_state = _member_scalar(federation, "wardline")
     gov_state = _member_scalar(federation, "legis")
+    req_state = _requirements_scalar(federation)
     if federation is None:
-        return risk_state, gov_state
+        return risk_state, gov_state, req_state
     fed_by_locator: dict[str, dict[str, Any]] = {}
     for fed_entity in federation.get("entities", []):
         locator = fed_entity.get("locator")
@@ -958,7 +1314,8 @@ def _merge_federation_enrichment(
             continue
         enrichment["risk"] = fed_entity.get("risk", [])
         enrichment["governance"] = fed_entity.get("governance", [])
-    return risk_state, gov_state
+        enrichment["requirements"] = fed_entity.get("requirements", [])
+    return risk_state, gov_state, req_state
 
 
 # ---------------------------------------------------------------------------
@@ -1034,7 +1391,6 @@ def capture_snapshot(
     client_available = status == "available"
     with WarplineStore.open(default_store_path(repo)) as store:
         existing = store.latest_snapshot(repo)
-        had_snapshot = existing is not None
         warnings: list[str] = []
         data: dict[str, Any]
         scope_locators: set[str] | None = None
@@ -1103,13 +1459,25 @@ def capture_snapshot(
                 )
             finally:
                 _close_if_supported(client)
-            result["idempotency"] = "already_current" if had_snapshot else "created"
+            # Idempotency reflects whether THIS capture was skipped/reused, not
+            # whether ANY prior snapshot existed: a capture that writes a new row
+            # for a different commit is still `created`. The only honest
+            # `already_current` is the loomweave-absent preserve path, which flags
+            # `recapture_skipped` because it wrote nothing.
+            result["idempotency"] = (
+                "already_current" if result.get("recapture_skipped") else "created"
+            )
             result.pop("query", None)
             result.pop("enrichment", None)
             if result.get("capped"):
                 warnings.append(
                     f"CAPPED: max_entities={cap} limited the captured entity set; completeness "
                     "downgraded to DELTA (affected-set is not complete)"
+                )
+            if result.get("recapture_skipped"):
+                warnings.append(
+                    f"PRESERVED: loomweave unavailable; existing {result.get('completeness')} "
+                    f"snapshot @ {result.get('commit_sha')} retained, not refreshed"
                 )
             data = {
                 "snapshot_id": result.get("snapshot_id"),
@@ -1144,7 +1512,6 @@ def capture_snapshot(
             "page": {"limit": None, "cursor": None},
         }
         capture_sei_triple = sei_reason(sei_state)
-        assert capture_sei_triple is not None  # unavailable/absent are always in-vocab
         return build_envelope(
             SCHEMA_EDGE_SNAPSHOT,
             query=query,
@@ -1153,6 +1520,77 @@ def capture_snapshot(
             enrichment_reasons={"sei": capture_sei_triple},
             warnings=completeness_warnings(str(data["completeness"])) + warnings,
         )
+
+
+def verify_record(
+    repo: Path,
+    *,
+    commit: str,
+    kind: str,
+    actor: str | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Record a verification (gate-pass) event for ``commit``.
+
+    The 2nd mutating verb (besides capture-snapshot). Writes ONE row to the
+    local ``verification_events`` table (``.weft/warpline/`` only); never a
+    sibling repo. ``commit`` is resolved to an object SHA before storage — a
+    symbolic ref is never persisted. ``kind`` is a free-form non-empty provenance
+    label (e.g. ``test_pass`` / ``ci_pass`` / ``gate_pass``). Idempotent on
+    (repo, commit, kind, source=warpline).
+    """
+
+    kind_clean = kind.strip()
+    if not kind_clean:
+        raise MissingRequiredFieldError(
+            "kind must be a non-empty verification label, e.g. test_pass",
+            rejected_field="kind",
+        )
+    if not commit or not commit.strip():
+        raise MissingRequiredFieldError(
+            "commit must be a non-empty ref or SHA",
+            rejected_field="commit",
+        )
+    resolved = resolve_commit(repo, commit)
+    if resolved is None:
+        raise BadRevisionError(
+            f"could not resolve commit ref {commit!r} to an object SHA",
+            rejected_field="commit",
+        )
+    verified_at = now or _now().isoformat()
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        inserted = store.record_verification_event(
+            repo_id=repo_id,
+            commit_sha=resolved,
+            kind=kind_clean,
+            verified_at=verified_at,
+            actor=actor,
+            source="warpline",
+        )
+    data = {
+        "commit_sha": resolved,
+        "kind": kind_clean,
+        "verified_at": verified_at,
+        "actor": actor,
+        "source": "warpline",
+        "idempotency": "recorded" if inserted else "already_recorded",
+    }
+    query = {
+        "repo": str(repo),
+        "tool": "warpline_verification_record",
+        "arguments": {"commit": commit, "kind": kind, "actor": actor},
+        "filters": {},
+        "sort": {},
+        "page": {"limit": None, "cursor": None},
+    }
+    return build_envelope(
+        SCHEMA_VERIFICATION_RECORD,
+        query=query,
+        data=data,
+        enrichment=enrichment_state(),
+        warnings=[],
+    )
 
 
 # ---------------------------------------------------------------------------

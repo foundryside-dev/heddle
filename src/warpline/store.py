@@ -225,11 +225,11 @@ def _migrate_v4_verification_events(conn: sqlite3.Connection) -> None:
 
 # Ordered, forward-only migrations. Each step's ``version`` is strictly greater
 # than the previous. v2 (anchor columns) lands in Rung 1b; v3 (co_change_pairs)
-# in Rung 2 Track A; v4 (verification_events) in Rung 2 Track B.
+# in Rung 2 Track A.
 #
 # Migration-ordering gate (B5): v3 MUST NOT precede v2 on disk — a DB opened in
 # the gap would land at user_version=3 and permanently skip v2. The ordered list
-# is the enforcement: each step always runs before the next for any DB below it.
+# is the enforcement: v2 always runs before v3 for any DB below 2.
 MIGRATIONS: list[Migration] = [
     Migration(version=2, apply=_migrate_v2_anchor_columns),
     Migration(version=3, apply=_migrate_v3_co_change_pairs),
@@ -1053,6 +1053,80 @@ class WarplineStore:
                 ),
             )
 
+    def _assert_no_orphans(self) -> None:
+        """Referential-integrity backstop for the FK-less derived tables (#3).
+
+        ``snapshot_edges`` (source/target ``entity_key_id``) and
+        ``co_change_pairs`` (``entity_key_id_a``/``_b``) reference
+        ``entity_keys.id`` but carry NO foreign key — even with
+        ``PRAGMA foreign_keys = ON`` (so the SEI-orthogonal repoint in
+        ``_merge_into_twin`` can run mid-merge without an FK firing). That makes
+        their integrity entirely the job of the hand-written ``_repoint_*``
+        family. This method is the DB-level-equivalent of the FOREIGN KEY those
+        tables intentionally lack, but as an explicit, read-only assertion:
+
+        - It is NOT wired into any production path (``reresolve_entity_key_sei``
+          / ``_merge_into_twin`` never call it), so a normal reresolve runs with
+          ZERO added queries and no new raise — the merge stays behavior-
+          identical. It is a test/CI-callable invariant only.
+        - It raises :class:`RuntimeError` naming the offending table, column(s),
+          and id(s) on the first orphan found, so a future edit that drops a
+          ``_repoint_*`` call (or adds a third ``entity_key_id``-keyed table left
+          unrepointed) fails loudly instead of silently orphaning rows.
+
+        Existence-only and whole-DB: ``entity_keys.id`` is globally unique and
+        ``snapshot_edges`` has no ``repo_id`` column, so no repo filter is
+        needed. ``entity_keys.id`` is an INTEGER PRIMARY KEY (never NULL) and the
+        referencing columns are NOT NULL, so ``NOT EXISTS`` carries none of the
+        NULL-swallowing hazard of ``NOT IN``.
+        """
+
+        edge_orphans = self.conn.execute(
+            """
+            SELECT source_entity_key_id, target_entity_key_id
+              FROM snapshot_edges AS se
+             WHERE NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = se.source_entity_key_id
+                   )
+                OR NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = se.target_entity_key_id
+                   )
+            """
+        ).fetchall()
+        if edge_orphans:
+            ids = sorted(
+                {int(r["source_entity_key_id"]) for r in edge_orphans}
+                | {int(r["target_entity_key_id"]) for r in edge_orphans}
+            )
+            raise RuntimeError(
+                "referential-integrity violation: snapshot_edges rows reference "
+                "entity_key_id(s) with no entity_keys row "
+                f"(source_entity_key_id/target_entity_key_id; offending ids: {ids})"
+            )
+
+        pair_orphans = self.conn.execute(
+            """
+            SELECT entity_key_id_a, entity_key_id_b
+              FROM co_change_pairs AS cp
+             WHERE NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = cp.entity_key_id_a
+                   )
+                OR NOT EXISTS (
+                     SELECT 1 FROM entity_keys ek WHERE ek.id = cp.entity_key_id_b
+                   )
+            """
+        ).fetchall()
+        if pair_orphans:
+            ids = sorted(
+                {int(r["entity_key_id_a"]) for r in pair_orphans}
+                | {int(r["entity_key_id_b"]) for r in pair_orphans}
+            )
+            raise RuntimeError(
+                "referential-integrity violation: co_change_pairs rows reference "
+                "entity_key_id(s) with no entity_keys row "
+                f"(entity_key_id_a/entity_key_id_b; offending ids: {ids})"
+            )
+
     def list_entity_keys(self, repo: Path) -> list[dict[str, object]]:
         repo_id = self._repo_id(repo)
         rows = self.conn.execute(
@@ -1187,6 +1261,93 @@ class WarplineStore:
              ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
             """,
             params,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def record_verification_event(
+        self,
+        *,
+        repo_id: str,
+        commit_sha: str,
+        kind: str,
+        verified_at: str,
+        actor: str | None,
+        source: str = "warpline",
+    ) -> bool:
+        """Record one gate-pass fact. Idempotent on (repo, commit, kind, source).
+
+        Returns True if a NEW row was inserted, False if an identical event
+        already existed (the ``INSERT OR IGNORE`` was a no-op). This gives the
+        verb an O(1), race-free idempotency signal without a second table scan.
+        ``commit_sha`` must be a resolved object SHA (the caller resolves the ref).
+        """
+
+        cursor = self.conn.execute(
+            """
+            INSERT OR IGNORE INTO verification_events(
+              repo_id, commit_sha, kind, verified_at, actor, source
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (repo_id, commit_sha, kind, verified_at, actor, source),
+        )
+        inserted = cursor.rowcount > 0
+        self.conn.commit()
+        return inserted
+
+    def list_verification_events(self, repo: Path) -> list[dict[str, object]]:
+        """All verification events for ``repo``, ordered oldest-first by verified_at.
+
+        ``verified_at`` is ISO-8601 written by the verb. We do NOT lexical-sort:
+        a caller-supplied ``now`` could carry a non-UTC offset, and a
+        chronologically-later ``...-04:00`` value sorts lexically BEFORE a UTC
+        ``...+00:00`` one — which would corrupt ``compose_verification_freshness``'s
+        most-recent-covering-event identification. So we normalize to the UTC
+        instant with ``datetime()`` (mirroring ``list_change_events`` at
+        ``store.py:~999``), and COALESCE back to the raw string so a value
+        ``datetime()`` cannot parse still sorts deterministically by its lexical
+        form rather than vanishing. ``id`` is the final tiebreak.
+        """
+
+        repo_id = self._repo_id(repo)
+        rows = self.conn.execute(
+            """
+            SELECT commit_sha, kind, verified_at, actor, source
+              FROM verification_events
+             WHERE repo_id = ?
+             ORDER BY COALESCE(datetime(verified_at), verified_at), id
+            """,
+            (repo_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_change_events_for_key_ids(
+        self, repo: Path, key_ids: list[int]
+    ) -> list[dict[str, object]]:
+        """Change events filtered to ``key_ids`` (reverify's verification path).
+
+        Pushes the entity filter into SQL (``WHERE ce.entity_key_id IN (...)``)
+        so reverify does not full-table-scan every change event in the repo just
+        to group commits by the handful of entities in the worklist. Empty
+        ``key_ids`` short-circuits to ``[]``. Returns the same row shape as
+        ``list_change_events`` (carries ``entity_key_id``, ``commit_sha``,
+        ``changed_at``), ordered oldest-first by the normalized ``changed_at``
+        instant then ``id`` so callers can take the latest change as the last row.
+        """
+
+        if not key_ids:
+            return []
+        repo_id = self._repo_id(repo)
+        unique_ids = sorted(set(key_ids))
+        placeholders = ",".join("?" for _ in unique_ids)
+        rows = self.conn.execute(
+            f"""
+            SELECT ce.commit_sha, ce.changed_at, ce.entity_key_id
+              FROM change_events ce
+             WHERE ce.repo_id = ?
+               AND ce.entity_key_id IN ({placeholders})
+             ORDER BY COALESCE(datetime(ce.changed_at), ce.changed_at), ce.id
+            """,
+            (repo_id, *unique_ids),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1727,6 +1888,28 @@ class WarplineStore:
         except BaseException:
             self.conn.execute("ROLLBACK")
             raise
+
+    def get_edge_snapshot(
+        self, repo_id: str, commit_sha: str, source: str
+    ) -> dict[str, object] | None:
+        """Fetch the snapshot row for an exact ``(repo, commit, source)`` key.
+
+        The UPSERT key is ``(repo_id, commit_sha, source)``, so this returns the
+        at-most-one row that a recapture for that triple would overwrite — the
+        precondition the loomweave-absent path needs to decide whether a usable
+        prior already exists (vs. ``latest_snapshot``, which is repo-latest by id
+        and answers a different question).
+        """
+
+        row = self.conn.execute(
+            """
+            SELECT id, commit_sha, source, source_version, captured_at, completeness
+              FROM edge_snapshots
+             WHERE repo_id = ? AND commit_sha = ? AND source = ?
+            """,
+            (repo_id, commit_sha, source),
+        ).fetchone()
+        return dict(row) if row is not None else None
 
     def latest_snapshot(self, repo: Path) -> dict[str, object] | None:
         repo_id = self._repo_id(repo)

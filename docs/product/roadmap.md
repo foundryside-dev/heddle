@@ -1,6 +1,6 @@
 # Roadmap - Warpline
 
-Updated: 2026-06-24 (PDR-0006 spine hardening SHIPPED in v1.2.0; PDR-0005 verification-freshness is the active bet)
+Updated: 2026-06-29 (PDR-0009 — arch-analysis Phase-2 reliability hardening accepted [U1/U2/U3/U4/U8]; the Rung-2 diagnostic tier is complete [verification-freshness PDR-0007, four-member federation PDR-0008] and the `release/1.2.0` cut is the active owner escalation)
 
 Sequencing, WSJF / cost-of-delay, and dated forecasts are produced by
 program-management. This file records bets as intent, not a delivery schedule.
@@ -54,11 +54,16 @@ them ever gate.
   test pass, Legis attestation, Filigree closure), not just `last_changed`.
   Reverify shifts from "changed since HEAD~1" to *"changed since last proven-good,"*
   with a trust-decay signal.
-- **Light up the flagship's inert dimensions.** The reverify worklist freezes four
-  enrichment slots; only work (Filigree, SEAM 2) is live. Implement SEAM 3 (Wardline
-  risk-by-SEI) and SEAM 4 (Legis governance/provenance) inbound reads so the
-  worklist sorts by risk/governance, not just depth. (Both RESERVED-SHAPE — proving
-  consumption is what freezes them.)
+- **Light up the flagship's inert dimensions — DONE (all four members live).** The
+  reverify worklist's `include_federation` seam once had only work (Filigree) live; the
+  other dimensions rode reserved. Now all four federation members are real consumers:
+  work (Filigree), risk (Wardline, via the attest-2 / `governance_read.v1`-adjacent
+  consumers — committed on `release/1.2.0`), governance (Legis, `governance_read.v1` —
+  committed), and **requirements (Plainweave, `weft.plainweave.requirements_enrichment.v1`
+  — PDR-0008, built+accepted, uncommitted on `release/1.2.0`)**. Each is advisory,
+  honest (`cause + reason_class + fix`), never gates, and never collapses
+  `unavailable`→`absent`. RESERVED-SHAPE consumption is now proven for every member; the
+  remaining step is the `release/1.2.0` version cut (owner escalation).
 
 ### Rung 3 — Predictive *(forecast — the "throw tokens at it" tier)*
 
@@ -146,13 +151,25 @@ attributed to its owning member, composed at read time, never mirrored.**
   + fix` per source). A COP with a dark sector that *looks* empty is worse than no
   COP — an unmonitored frame must never read as "nothing changed."
 
-## Now (committed, in-flight)
+## Now (committed)
 
-- **Rung 2 — verification-freshness** *(active bet — PDR-0005)*. A `last_verified`
-  axis sourced from warpline's own gate result, so the reverify worklist answers
-  "changed since last proven-good" with a trust-decay signal; advisory, never gates.
-  Spec ready (`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`);
-  next step is `/axiom-planning`. Sibling-sourced verification stays honest-absent.
+The Rung-2 diagnostic tier is essentially complete and the four-member federation seam
+is fully lit; the active committed intent is the **release cut**.
+
+- **Rung 2 — verification-freshness** — *DONE* (PDR-0005 → accepted PDR-0007). The
+  `last_verified` trust-decay axis, merged and validated on a real repo against its
+  reversal trigger.
+- **Rung 2 — light up the inert dimensions** — *DONE* (PDR-0008). All four
+  `include_federation` members are real reverify consumers: filigree (work), wardline
+  (risk / attest-2), legis (governance), plainweave (requirements) — the dimension
+  warpline had never wired.
+- **Reliability hardening (arch-analysis Phase 2)** — *DONE* (PDR-0009). U1/U2/U3/U4/U8:
+  the FK-less referential-integrity invariant, the order-drift identity echo, read-path
+  observability, the throttle gap, and loomweave-client hardening. Guardrail work that
+  de-risks the `store.py` / `reverify_worklist` chokepoints every future bet must edit.
+- **Cut + release the `release/1.2.0` stack** — a 1.3.0-worth of accepted capability sits
+  atop v1.2.0. The version cut (1.3.0 vs 1.2.x) and the public-release-status change are
+  the **owner escalation** (see `current-state.md`); intent only, no date here.
 - **Evidence freshness** — keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Warpline evolves.
 

@@ -396,6 +396,41 @@ def test_changed_only_scope_limits_captured_entities(tmp_path: Path) -> None:
     assert "python:function:drop" not in seen
 
 
+def test_capture_at_new_commit_reports_created_not_already_current(tmp_path: Path) -> None:
+    """A capture that writes a snapshot for a NEW commit reports ``created`` even
+    though a prior snapshot already exists for the repo. The idempotency signal
+    must reflect whether THIS capture was skipped/reused, not merely whether any
+    snapshot existed — otherwise a genuinely new row is mislabelled
+    ``already_current`` and a caller skips real follow-up work."""
+
+    repo = _init_repo(tmp_path)
+    first = _commit(repo, "a.py", "a = 1\n")
+    env1 = commands.capture_snapshot(repo, commit=first)
+    assert env1["data"]["idempotency"] == "created"
+
+    second = _commit(repo, "a.py", "a = 2\n")
+    env2 = commands.capture_snapshot(repo, commit=second)
+    # a prior snapshot (at `first`) exists, but this wrote a NEW row for `second`
+    assert env2["data"]["idempotency"] == "created"
+
+
+def test_recapture_with_usable_prior_reports_already_current(tmp_path: Path) -> None:
+    """The reuse branch is locked too: a loomweave-absent recapture that preserves
+    a usable FULL/DELTA prior for the SAME commit reports ``already_current`` —
+    the only honest ``already_current``, because no new row was written."""
+
+    repo = _init_repo(tmp_path)
+    head = _commit(repo, "a.py", "a = 1\n")
+    with WarplineStore.open(default_store_path(repo)) as store:
+        repo_id = store.ensure_repo(repo)
+        # a real FULL prior at HEAD's commit; loomweave is absent on recapture, so
+        # capture_edge_snapshot preserves it (recapture_skipped) rather than write.
+        store.create_edge_snapshot(repo_id, head, "loomweave", "test", "FULL")
+
+    env = commands.capture_snapshot(repo, commit=head)
+    assert env["data"]["idempotency"] == "already_current"
+
+
 def test_capture_if_stale_after_short_circuits(tmp_path: Path) -> None:
     """A current snapshot captured at-or-after the watermark skips recapture and
     reports already_current with a FRESH warning — the field is honored, not

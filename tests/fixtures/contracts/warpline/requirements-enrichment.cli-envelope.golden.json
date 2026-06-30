@@ -1,0 +1,42 @@
+{
+    "schema": "weft.plainweave.requirements_enrichment.v1",
+    "ok": true,
+    "data": {
+        "items": [
+            {
+                "entity_ref": "loomweave:eid:aaaaaaaa000000000000000000000000",
+                "status": "unavailable",
+                "requirements": [],
+                "reason": "Entity identity is not resolvable locally; cannot determine requirements.",
+                "freshness": "unavailable"
+            },
+            {
+                "entity_ref": "loomweave:eid:bbbbbbbb000000000000000000000000",
+                "status": "unavailable",
+                "requirements": [],
+                "reason": "Entity identity is not resolvable locally; cannot determine requirements.",
+                "freshness": "unavailable"
+            }
+        ],
+        "summary": {
+            "present": 0,
+            "absent": 0,
+            "unavailable": 2
+        },
+        "authority_boundary": {
+            "local_only": true,
+            "live_peer_calls": false,
+            "governance_verdicts": false,
+            "requirements_owner": "plainweave"
+        }
+    },
+    "warnings": [],
+    "meta": {
+        "producer": {
+            "tool": "plainweave",
+            "version": "1.1.0"
+        },
+        "generated_at": "2026-06-28T13:45:48.208805+00:00",
+        "project": "PLAINWEAVE"
+    }
+}

@@ -9,7 +9,7 @@ read-time, never-gating, no-mirror steps:
     frame selects, plus an echo of how the frame resolved and any honest
     degradation warning. It reads ONLY existing store methods + git; it mints no
     identifier and writes nothing.
-  * :func:`compose_temporal_cop` consults the federation (reusing the three
+  * :func:`compose_temporal_cop` consults the federation (reusing the four
     ``_consult_*`` from :mod:`warpline.federation` VERBATIM) and wraps the result
     in a coverage block. ``coverage.dark_sectors`` is the load-bearing honesty
     surface: a member we could not consult is named as a dark sector with its own
@@ -41,9 +41,11 @@ from warpline.errors import BadRevisionError
 from warpline.federation import (
     FEDERATION_MEMBERS,
     LegisClient,
+    RequirementsClient,
     RiskClient,
     _consult_filigree,
     _consult_legis,
+    _consult_plainweave,
     _consult_wardline,
 )
 from warpline.listing import reason
@@ -61,7 +63,7 @@ def _item_from_event(event: dict[str, Any]) -> dict[str, Any]:
     """Shape a stored change event as a COP item.
 
     The ``entity`` sub-dict matches the federation consult contract
-    (``entity.locator`` / ``entity.sei``) so the three ``_consult_*`` can read it
+    (``entity.locator`` / ``entity.sei``) so the four ``_consult_*`` can read it
     verbatim. The anchor columns (Rung 1b) ride along when present.
     """
 
@@ -345,10 +347,11 @@ def compose_temporal_cop(
     work_client: WorkClient | None = None,
     risk_client: RiskClient | None = None,
     legis_client: LegisClient | None = None,
+    requirements_client: RequirementsClient | None = None,
 ) -> dict[str, Any]:
     """Compose the temporal COP for a resolved frame's ``items``.
 
-    Reuses the three federation consults VERBATIM (R9) and wraps them in a
+    Reuses the four federation consults VERBATIM (R9) and wraps them in a
     coverage block. Returns
     ``{"members", "entities", "coverage", "frame"}`` where:
 
@@ -363,18 +366,22 @@ def compose_temporal_cop(
       * ``frame`` — the frame echo from :func:`resolve_frame` (carries
         ``weft_reason_class``).
 
-    ``consult_federation`` is NOT modified; this composes the same three consults
+    ``consult_federation`` is NOT modified; this composes the same four consults
     and adds coverage. Read-time, never-gating, no-mirror — writes nothing.
     """
 
     work_by, work_reason = _consult_filigree(items, work_client)
     risk_by, risk_reason = _consult_wardline(items, risk_client)
     gov_by, gov_reason = _consult_legis(items, legis_client)
+    # the requirements member's per-entity unavailable marker is not part of the COP
+    # coverage view (dark_sectors keys on reason_class only) — drop the third element.
+    req_by, req_reason, _ = _consult_plainweave(items, requirements_client)
 
     member_reasons = {
         "filigree": (work_reason, work_by),
         "wardline": (risk_reason, risk_by),
         "legis": (gov_reason, gov_by),
+        "plainweave": (req_reason, req_by),
     }
     members: dict[str, Any] = {}
     dark_sectors: list[dict[str, Any]] = []
@@ -403,7 +410,8 @@ def compose_temporal_cop(
         work = work_by.get(locator, [])
         risk = risk_by.get(locator, [])
         gov = gov_by.get(locator, [])
-        if not (work or risk or gov):
+        req = req_by.get(locator, [])
+        if not (work or risk or gov or req):
             continue
         entities.append(
             {
@@ -412,6 +420,7 @@ def compose_temporal_cop(
                 "work": work,
                 "risk": risk,
                 "governance": gov,
+                "requirements": req,
             }
         )
 

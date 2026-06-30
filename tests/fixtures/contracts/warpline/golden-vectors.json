@@ -45,12 +45,15 @@
     {"id": "GV-HON-GOV", "seam": "legis", "tool": "warpline_entity_timeline_get",
      "assert": "timeline governance is explained: rename feed -> governance present + enrichment_reasons.governance clean; no feed -> governance unavailable + reason_class disabled"},
     {"id": "GV-HON-REQ", "seam": "all", "tool": "all six",
-     "assert": "reserved requirements dimension carries a stable disabled triple (reserved, not yet wired) on every tool; scalar stays unavailable"}
+     "assert": "reserved requirements dimension carries a stable disabled triple (reserved, not yet wired) on every tool; scalar stays unavailable"},
+    {"id": "GV-VF-1", "seam": "warpline", "tool": "warpline_reverify_worklist_get / warpline_verification_record",
+     "assert": "reverify carries an honest verification block on the DATA item (never the frozen enrichment vocab): no source -> every item unverified + disabled triple + local_source_configured false; record a gate pass at the change commit -> fresh + last_verified_commit set + local_source_configured true; recording verification never removes an item (never-filter); meta.local_only true / peer_side_effects []"}
   ],
   "reserved_shape_inbound": {
     "loomweave": "PROVEN+FROZEN (entity_resolve, entity_neighborhood_get) — real consumption (HX1, capture)",
     "filigree": "EARNED — warpline consumes entity_association_list_by_entity + issue_get for reverify work enrichment (GV-FI-1, GV-FI-3)",
-    "wardline": "NON-BINDING — degrade only (risk: unavailable); warpline does not consume wardline findings (GV-WL-3)",
-    "legis": "NON-BINDING member; the generic locator-rename FEED shape is earned (GV-LG-2), legis stays a future external supplier"
+    "wardline": "EARNED (2026-06-29) — WardlineDossierClient over `wardline dossier` is auto-wired on include_federation, reading active trust findings into the `risk` enrichment dimension; the pushed attest-2 bundle path adds risk-as-verification. GV-WL-3 still pins the honest degrade/unreachable path when no client is configured or wardline is absent.",
+    "legis": "EARNED (2026-06-29) — LegisGovernanceClient over `legis governance-read` (governance_read.v1, mirrored byte-for-byte) is capability-gated auto-wired, lighting the `governance` enrichment dimension; echo-only, never a warpline verdict. GV-LG-1/2/3 pin the honesty and feed shape; governance reads `disabled` until the verb is advertised.",
+    "plainweave": "EARNED (2026-06-29, NEW 4th member, PDR-0008) — PlainweaveRequirementsClient over `plainweave requirements-enrichment` (weft.plainweave.requirements_enrichment.v1) is capability-gated auto-wired, lighting the `requirements` enrichment dimension (present/absent/unavailable, no-silent-clean). Reads `disabled` until the verb is advertised; live contract currently dark until the plainweave producer binary is reshipped (installed v1.0.0 → source v1.1.0)."
   }
 }

@@ -27,6 +27,15 @@ Load this when an answer looks thin, or when wiring warpline into a repo.
   clean/allowed/governed state.
 - `edges` may also be `stale | partial | skipped`.
 
+`governance` reads legis `governance_read.v1`, which reports **verified clearances
+only** (operator override / cleared sign-off). So `governance: absent` means **"no
+verified clearance,"** which deliberately conflates *ungoverned*, *unknown-SEI*, and
+crucially an entity **actively BLOCKED awaiting sign-off** — the one governance fact
+most relevant to "what must I re-verify," and invisible in this channel. `absent` is
+therefore **never** "ungoverned." The clearance `content_hash` is echoed verbatim,
+not re-derived against the current body — `present` means legis *holds* a clearance,
+not that it is fresh.
+
 warpline is deconfliction tooling, not security: every sibling fact is advisory and
 **never gates**. wardline absent → `risk: unavailable`, never `clean`.
 

@@ -37,10 +37,12 @@ def reason(
     """Build a weft-reason carrier. ``clean`` omits cause/fix; every other class
     MUST carry both (fix recruits the caller toward what they wanted)."""
 
-    assert reason_class in REASON_CLASSES, f"{reason_class!r} not in the canonical 11"
+    if reason_class not in REASON_CLASSES:
+        raise ValueError(f"{reason_class!r} not in the canonical 11")
     if reason_class == "clean":
         return {"reason_class": "clean"}
-    assert cause and fix, f"non-clean reason {reason_class!r} requires both cause and fix"
+    if not (cause and fix):
+        raise ValueError(f"non-clean reason {reason_class!r} requires both cause and fix")
     return {"reason_class": reason_class, "cause": cause, "fix": fix}
 
 
@@ -371,6 +373,18 @@ def apply_page(
     (or null at the end), ``has_more``, and a weft-reason carrier: ``clean`` for
     a normal page, ``partial`` when a cursor lands at or past the end (an honest
     empty page, never a silent clean-empty)."""
+
+    # A non-positive limit would slice an empty window WITHOUT advancing the
+    # offset, so a non-empty result reports has_more:true with a next_cursor equal
+    # to the current offset — a cursor-following client loops forever. Reject it
+    # loudly, exactly as max_entities / the cursor offset reject non-positive
+    # bounds (PDR-0023: honor the advertised knob or reject it, never quietly
+    # mis-page). InvalidSortError is the pagination family's error (its sibling
+    # cursor knob raises the same); rejected_field names the offending input.
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+        raise InvalidSortError(
+            "limit must be a positive integer", rejected_field="limit"
+        )
 
     offset = decode_cursor(cursor)
     total = len(items)

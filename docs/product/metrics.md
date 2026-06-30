@@ -1,6 +1,6 @@
 # Metrics - Warpline
 
-Last read: 2026-06-24 (checkpoint)
+Last read: 2026-06-26 (checkpoint)
 
 ## North-star
 
@@ -67,6 +67,84 @@ adversarially-verified review (PDR-0006). No reversal trigger crossed.
 - **Install hygiene** — warpline 1.2.0 is the single canonical uv tool; the stale
   pre-rename `heddle` editable venv (which shadowed bare invocations at 1.0.0) was
   retired.
+
+## 2026-06-26 readings — 1.2.0 follow-up burndown
+
+Execution session on the PDR-0006 deferred follow-ups (no bet change; no reversal
+trigger crossed).
+
+- **Tracked quality debt** — 3 of the 4 original 1.2.0 review follow-ups now closed:
+  warpline-d7d04243b2 (prior session), and this session warpline-fc09bdeddd
+  (contract-fixture drift; commit 3f6f652) + warpline-d88e223731 (`reason()`
+  assert→ValueError; commit 7683407). Remaining: warpline-17242c627b (atomic ROLLBACK
+  coverage + precondition guard). New follow-up filed since: warpline-9eae3eb86a
+  (Charter→Plainweave evidence refresh, gated on the plainweave repo).
+- **Authority-boundary / honesty guardrail — strengthened.** The weft-reason carrier
+  invariant (every non-clean reason carries cause+fix — the "unexplained absence" the
+  honesty doctrine forbids) now survives `python -O`: `reason()` and `build_envelope`
+  raise `ValueError` instead of relying on `-O`-strippable `assert`s, and `sei_reason`
+  is non-Optional. Verified by an independent `python -O` proof plus full suite green
+  (5 known env-only `PackageNotFoundError` failures, no 6th); mypy unchanged; ruff clean.
+- **Observation filed** — warpline-obs-da4909ac64: the same bare-`assert`-under-`-O`
+  pattern remains in `mcp.py`'s inputSchema guard (different module; scoped out of
+  d88e223731).
+- **No north-star or input-metric change** — no consumer-facing capability shipped this
+  session; verification-freshness remains built-but-unreleased on
+  `plan/verification-freshness`.
+
+## 2026-06-29 readings — Plainweave requirements consumer (4th federation member)
+
+Acceptance session for the requirements consumer (PDR-0008). No reversal trigger crossed;
+the federation seam *strengthened*.
+
+- **Federation member coverage (input) — 3 → 4 live consumers.** The reverify
+  `include_federation` seam now has all four members as real consumers: filigree (work),
+  wardline (risk), legis (governance), and **plainweave (requirements)** — the dimension
+  warpline had never wired. `requirements` no longer rides the reserved
+  `disabled`/`unavailable` default when the producer is present.
+- **Reverify honesty coverage (input) — held, with the no-silent-clean invariant
+  strengthened.** The requirements scalar never collapses `unavailable`→`absent`: a
+  reachable producer returning per-entity `unavailable`, or a worklist entity with no SEI
+  (identity-unresolved), surfaces envelope `unavailable`, not a confident-empty `absent`.
+  Pinned by a discriminating fault-injection test (caught by the adversarial review).
+- **Authority-boundary guardrail — held.** No plainweave patch (read-only consult + a
+  vendored *copy* of plainweave's golden into warpline fixtures); advisory-never-gates and
+  `meta.local_only`/`peer_side_effects:[]` verified on the requirements path.
+- **Suite** — full warpline suite 569 passed / 1 skipped / 0 failed; ruff + `mypy src`
+  clean. North-star unchanged (no new dogfood-eval run this session).
+- **Watch (PDR-0008 reversal trigger):** whether the installed plainweave actually
+  advertises `requirements-enrichment` in real member repos — if it never does, the
+  dimension reads perpetually `disabled` and adds no signal.
+
+## 2026-06-29 readings — arch-analysis Phase-2 reliability hardening (PDR-0009)
+
+Guardrail-class hardening (U1/U2/U3/U4/U8); no north-star movement (stated honestly),
+no reversal trigger crossed.
+
+- **Authority-boundary / data-integrity guardrail — strengthened.** U1 adds a
+  `_assert_no_orphans` referential-integrity invariant over the FK-less derived tables
+  (`snapshot_edges`, `co_change_pairs`), test/CI-invoked, zero added queries on the
+  production merge path — converts a silent-corruption hazard into a loud test failure.
+- **Silent-correctness — closed.** U2 replaces the length-only positional guard with a
+  per-row **locator identity echo** (independent provenance) that raises `ValueError` on
+  equal-length order-drift; adversarially verified to fail-if-reverted. The only
+  silent-wrong-answer item in the arch-analysis is now defended.
+- **Observability + reliability.** U3 routes the three read-path swallows through
+  `health_log` (degradation now traceable, not silent); U4 stamps the throttle marker on
+  the capture-RAISE path (no more invisible spin-up re-pay); U8 bounds the loomweave
+  client (frame cap + read deadline) so a hung sibling can't wedge a graph read.
+- **Suite** — full warpline suite **572 passed / 1 skipped / 0 failed** (one new U2 test
+  over the 569 baseline); ruff + `mypy src/warpline` clean; wardline `--fail-on ERROR`
+  exit 0. Behavior-preserving; frozen golden vectors intact.
+
+- **⚠️ PDR-0008 watch reading — requirements dimension currently `disabled` in practice.**
+  The producer review (this session) found the installed `plainweave` binary is **stale
+  (v1.0.0, no `requirements-enrichment` verb)** while source is v1.1.0 with the verb. So
+  warpline's capability probe hits the stale binary and the requirements member reads
+  `disabled` — the contract is dark end-to-end until a `uv tool install --force` reinstall
+  ships v1.1.0 on PATH. This does **not** trip PDR-0008's reversal trigger (which is
+  "*never* advertises") — it is a fixable ship gap — but the dimension adds no live signal
+  until the reinstall (owner escalation; see `current-state.md`).
 
 ## Reading notes
 

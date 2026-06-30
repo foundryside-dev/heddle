@@ -1,72 +1,84 @@
 # Current State - Warpline
 
-Checkpoint: 2026-06-24 — `main` @ v1.2.0 (spine hardening shipped)
+Checkpoint: 2026-06-29 — branch `release/1.2.0` (a 1.3.0-worth of accepted, **now-committed**
+capability built atop v1.2.0; the version cut + release is the open owner escalation)
 
 ## The bet right now
 
-**Rung 2 — verification-freshness** (PDR-0005): give warpline a `last_verified` axis,
-sourced from its own gate result, so the reverify worklist answers *"changed since
-last proven-good"* with a trust-decay signal — advisory, never gates. **Moves** the
-north-star from "reverify since HEAD~1" toward "since last proven-good."
+**Cut + release the `release/1.2.0` stack.** Spine hardening shipped as **v1.2.0** (PDR-0006).
+Atop it, four accepted capabilities have landed and are now **all committed**:
 
-Status: design **spec written, at the review gate**
-(`docs/superpowers/specs/2026-06-23-verification-freshness-design.md`, on `main` since
-the 1.2.0 merge). Next step: spec sign-off → `/axiom-planning` → build (same
-subagent-driven flow as the hardening bet). Not yet filed as a tracker issue.
+- **Verification-freshness** (PDR-0005 → accepted PDR-0007) — `last_verified` trust-decay axis,
+  merged + validated on a real repo against its reversal trigger.
+- **Four-member federation** (PDR-0008) — all `include_federation` members are real reverify
+  consumers: filigree (work), wardline (risk/attest-2), legis (governance), **plainweave
+  (requirements)** — the dimension warpline had never wired.
+- **Arch-analysis Phase-2 reliability hardening** (PDR-0009, this session) — U1/U2/U3/U4/U8
+  (`commits 69d081c + 62f2c4c`); guardrail work, behavior-preserving, suite 572 passed.
+
+The capability is built, accepted, and committed; what remains is the **version cut (1.3.0 vs
+1.2.x) and the public-release-status change** — an owner escalation (below).
 
 ## Branch / release state
 
-- **`main` = v1.2.0.** Three releases shipped this session (all owner-directed):
-  **v1.1.2** (post-commit hook hang fix), **v1.1.3** (version-metadata single-sourcing),
-  **v1.2.0** (spine hardening — correct-by-construction capture + honesty completeness
-  + 5th-producer conformance package), the last via a merge after a release-grade
-  multi-agent review (PDR-0006).
-- `plan/spine-hardening` and `release/1.2.0` were deleted (fully merged into `main`).
-- Install hygiene: single canonical warpline (uv tool **1.2.0**); the stale pre-rename
-  `heddle` editable venv was retired.
+- **`main` = v1.2.0** (spine hardening; PDR-0006).
+- **Working branch = `release/1.2.0`** @ `62f2c4c` — carries v1.2.0 + verification-freshness +
+  attest-2 risk + legis governance + `project_status` + D1 impact_completeness + the
+  **requirements consumer** + the **Phase-2 reliability wave** — all committed.
+- **Identity (standing requirement):** git/gh identity is **tachyon-beep** (active); johnm-dta
+  inactive. Verified before each commit this session.
 
-## In flight (tracker)
+## In flight
 
-Four review follow-ups (open, none blocking — from the 1.2.0 review):
-
-- `warpline-d7d04243b2` (P2 bug) — SKIPPED snapshot path (loomweave-absent) is
-  non-atomic and downgrades a usable prior snapshot (pre-existing R3-class).
-- `warpline-fc09bdeddd` (P2 task) — contract fixtures + ENVELOPE_KEYS stale (missing
-  `enrichment_reasons`); **do with/before the hub handover**.
-- `warpline-d88e223731` (P3 task) — promote `reason()` cause/fix invariant from
-  assert → ValueError (survive `python -O`).
-- `warpline-17242c627b` (P3 task) — cover the atomic ROLLBACK branch + enforce the
-  no-open-transaction precondition.
-
-(Plus `warpline-3deba68a62` P4 "Future" placeholder.) The verification-freshness bet
-lives in the spec, not yet the tracker.
+- **Phase-2 reliability hardening (PDR-0009) — DONE, committed.** U1 orphan invariant, U2
+  order-drift identity echo, U3 read-path breadcrumbs, U4 throttle gap, U8 loomweave client
+  hardening. Adversarially reviewed; no tracker tickets (the arch-analysis→filigree bridge was
+  owner-gated and the wave was done directly; recorded in PDR-0009 + the commits).
+- `warpline-17242c627b` (P3) — atomic ROLLBACK coverage + no-open-transaction precondition.
+  **OPEN — clean, startable** (last ungated 1.2.0 follow-up; distinct from Phase 2).
+- `warpline-9eae3eb86a` (P3) — Charter→Plainweave sibling-guard evidence refresh. **Now ungated**
+  — the `plainweave` sibling repo is present locally; reconfirm before claiming.
+- Observation `warpline-obs-da4909ac64` (P3): bare-`assert`-under-`-O` in `mcp.py` inputSchema
+  guard (expires 2026-07-09 unless promoted).
 
 ## Open questions / blocked-on-owner (escalations)
 
-1. **Deliver the 5th-producer handover to the federation hub** — GS-7 oracle wiring +
-   glossary freeze (OD-5 resolved-direction; warpline-side package done at
-   `docs/integration/2026-06-22-warpline-5th-producer-handover.md`). Outward-facing /
-   sibling — owner's call. The fixture-drift follow-up (`fc09bdeddd`) lands with it.
-2. **(deferred)** Promoting `verification` into the frozen closed envelope vocab is a
-   future glossary/contract-evolution escalation (the v1 bet keeps it as a
-   reverify-item field — PDR-0005).
-
-*(Escalation #1 from the prior checkpoint — merge to `main` + cut 1.2.0 — is RESOLVED:
-owner-directed and shipped this session.)*
+1. **Cut + release the `release/1.2.0` stack** — version cut (1.3.0 vs 1.2.x) + the
+   public-release-status change outside this repo. Owner's call (grant: "changing
+   public/user-facing release status outside this repo").
+2. **Ship the requirements producer so the 4th member is actually live (reinstall).** The
+   producer review found the installed `plainweave` is **stale (v1.0.0, no verb)** vs source
+   v1.1.0 — so warpline's probe reads the member `disabled` until `uv tool install --force`
+   reships plainweave on PATH (and warpline's own MCP binary likely needs the same rebuild for
+   the MCP consumer path — see [[warpline-mcp-binary-staleness]]). Sibling/install action;
+   plainweave also has an uncommitted `pyproject.toml` + handoff doc.
+3. **5th-producer hub handover** — outward-facing/sibling. warpline-side package done; GS-7
+   oracle wiring + glossary freeze (OD-5) remain.
+4. **Swarm coordination / provenance (owner awareness).** Multiple uncoordinated swarm sessions
+   landed sibling-consumer work in a shared tree this period — the legis/wardline consumers
+   landed in prior sessions with no PDR, and this session a concurrent session co-mingled the
+   requirements consumer with the Phase-2 wave in `commands.py` (resolved by committing both
+   together). Worth a coordination convention before the next multi-stream push.
+5. **(deferred)** Promoting `requirements`/`verification` into the frozen closed envelope vocab —
+   future contract/glossary escalation (v1 keeps both as reverify-item fields; PDR-0005/0008).
 
 ## What this checkpoint did
 
-- Recorded **PDR-0006** (accept + ship the hardening bet as v1.2.0 after a 14-agent
-  adversarially-verified review; verdict ship, 0 blockers/majors; defer the
-  verified-minor findings to tracked follow-ups).
-- Roadmap: spine hardening moved out of Now (**shipped in v1.2.0**); verification-
-  freshness is the sole active Now bet.
-- Metrics: 2026-06-24 reading for the 1.2.0 ship + review (all frozen invariants
-  re-verified; 338 passed; release gate green); 4 follow-ups tracked; no reversal
-  trigger crossed.
+- **PDR-0009** — accepted the arch-analysis Phase-2 reliability hardening wave (U1/U2/U3/U4/U8),
+  delivered across two adversarially-reviewed workflows and committed (`69d081c` + `62f2c4c`);
+  behavior-preserving, frozen contracts intact, 572 passed. Autonomous under the grant.
+- **Reconciled a stale brief.** The prior checkpoint (PDR-0008) called the requirements consumer
+  *UNCOMMITTED* and framed U2/U3/U4 as a *"concurrent, not this owner's"* observability stream —
+  both wrong now: the requirements consumer is committed, and that stream **was** this owner's
+  Phase-2 reliability wave. Corrected. Escalation "commit strategy for the consumer" is resolved.
+- **metrics.md** — 2026-06-29 reading: Phase-2 guardrails strengthened; recorded the PDR-0008
+  watch as **currently degraded** (stale plainweave binary → requirements `disabled` pending
+  reinstall). **roadmap.md** — Now updated (Rung-2 diagnostic tier complete; Phase-2 done;
+  release cut is the active intent). No reversal trigger crossed.
 
 ## Next session starts here
 
-Pick up the **verification-freshness spec review** → `/axiom-planning` to generate the
-implementation plan → build. Escalation #1 (hub handover) is waiting whenever the
-owner wants to act on it.
+Owner decision on **escalation #1 + #2** — cut/release the stack, and the **plainweave reinstall**
+that actually makes the 4th federation member live (without it the requirements dimension reads
+`disabled`). Failing that, the clean repo-local pickup `warpline-9eae3eb86a` (Charter→Plainweave
+evidence, now ungated) or `warpline-17242c627b` (atomic ROLLBACK coverage).

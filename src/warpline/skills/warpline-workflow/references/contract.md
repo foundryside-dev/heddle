@@ -51,4 +51,8 @@ NOT a federation key; key on `sei` (preferred) or `locator`.
 - filigree owns work state; warpline reads links, never files/closes/claims.
 - wardline owns trust policy; warpline re-derives risk as ordering signal, never a
   clean/allow verdict. wardline absent → `risk: unavailable`, never `clean`.
-- legis owns governance + the rename feed; warpline emits advisory impact only.
+- legis owns governance + the rename feed; warpline emits advisory impact only. The
+  `governance` enrichment echoes legis `governance_read.v1` (verified clearances
+  only): `absent` = "no verified clearance" (conflates ungoverned / unknown-SEI /
+  actively-blocked), never "ungoverned"; the clearance `content_hash` is echoed, not
+  re-verified against the current body.

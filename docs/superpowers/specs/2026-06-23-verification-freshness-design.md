@@ -75,8 +75,12 @@ CREATE TABLE IF NOT EXISTS verification_events (
 );
 ```
 
-Accessors: `record_verification_event(*, repo_id, commit_sha, kind, verified_at, actor, source) -> int`
-and `verification_events_for_repo(repo_id) -> list[dict]` (ordered by `verified_at`).
+Accessors (names/return types match the existing `change_events` convention —
+reconciled with the implementation plan): `record_verification_event(*, repo_id,
+commit_sha, kind, verified_at, actor, source="warpline") -> bool` (idempotent
+`INSERT OR IGNORE`; returns whether a new row was inserted) and `list_verification_events(repo:
+Path) -> list[dict]` (ordered oldest-first by the normalized `verified_at` instant,
+like `list_change_events`).
 
 ### 2. Write path — `verify-record` verb (CLI + MCP)
 
