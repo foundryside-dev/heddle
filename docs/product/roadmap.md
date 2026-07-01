@@ -1,6 +1,6 @@
 # Roadmap - Warpline
 
-Updated: 2026-06-29 (PDR-0009 — arch-analysis Phase-2 reliability hardening accepted [U1/U2/U3/U4/U8]; the Rung-2 diagnostic tier is complete [verification-freshness PDR-0007, four-member federation PDR-0008] and the `release/1.2.0` cut is the active owner escalation)
+Updated: 2026-07-01 (PDR-0010 — **v1.3.0 RELEASED** to main, tagged, pushed, installed: verification-freshness + four-member federation + project_status + Phase-2 hardening. The Rung-2 diagnostic tier is shipped; near-term intent is the 5th-producer hub handover, then Rung 3)
 
 Sequencing, WSJF / cost-of-delay, and dated forecasts are produced by
 program-management. This file records bets as intent, not a delivery schedule.
@@ -153,8 +153,9 @@ attributed to its owning member, composed at read time, never mirrored.**
 
 ## Now (committed)
 
-The Rung-2 diagnostic tier is essentially complete and the four-member federation seam
-is fully lit; the active committed intent is the **release cut**.
+The Rung-2 diagnostic tier is complete and **shipped as v1.3.0** (PDR-0010). Near-term
+intent shifts to the **5th-producer hub handover** (GS-7 wiring + glossary freeze — an
+owner escalation); **Rung 3 (predictive)** is the next capability tier.
 
 - **Rung 2 — verification-freshness** — *DONE* (PDR-0005 → accepted PDR-0007). The
   `last_verified` trust-decay axis, merged and validated on a real repo against its
@@ -167,9 +168,11 @@ is fully lit; the active committed intent is the **release cut**.
   the FK-less referential-integrity invariant, the order-drift identity echo, read-path
   observability, the throttle gap, and loomweave-client hardening. Guardrail work that
   de-risks the `store.py` / `reverify_worklist` chokepoints every future bet must edit.
-- **Cut + release the `release/1.2.0` stack** — a 1.3.0-worth of accepted capability sits
-  atop v1.2.0. The version cut (1.3.0 vs 1.2.x) and the public-release-status change are
-  the **owner escalation** (see `current-state.md`); intent only, no date here.
+- **v1.3.0 — SHIPPED** (PDR-0010, owner-directed). The four-member-federation +
+  verification-freshness + Phase-2 stack merged to `main` (`3768794`), tagged `v1.3.0`,
+  pushed to origin, and installed into the live MCP tool. Retires the release escalation.
+  *Post-release gap:* the `requirements` member reads `disabled` until the plainweave
+  producer binary is reshipped (PDR-0008 watch).
 - **Evidence freshness** — keep dogfood, productization, lint/type/test, and
   member-diff gates aligned as Warpline evolves.
 

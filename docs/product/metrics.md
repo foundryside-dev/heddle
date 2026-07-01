@@ -146,6 +146,24 @@ no reversal trigger crossed.
   "*never* advertises") — it is a fixable ship gap — but the dimension adds no live signal
   until the reinstall (owner escalation; see `current-state.md`).
 
+## 2026-07-01 readings — v1.3.0 released (PDR-0010)
+
+The accepted stack shipped to `main` as **v1.3.0** (owner-directed). No reversal trigger
+crossed by the release.
+
+- **Release gate — green.** Merged `main` passed ruff + `mypy src/warpline` + pytest
+  (572 passed / 1 skipped); frozen `warpline.<contract>.v1` data contracts unchanged
+  (a clean minor); `git diff release/1.2.0 main` == empty (main holds exactly the release).
+- **North-star — now backed by the shipped 4-member stack.** The federation-enriched
+  reverify capability (verification-freshness + filigree/wardline/legis/plainweave
+  consumers + `project_status`) is live on `main`/`v1.3.0` and installed into the MCP tool
+  (`~/.local/bin/warpline` = 1.3.0; the stale heddle-venv shadow retired, so bare
+  `warpline` is 1.3.0 too). No new dogfood-eval run this session.
+- **⚠️ Watch still degraded (PDR-0008 / PDR-0010 known gap):** the `requirements`
+  dimension reads `disabled` in practice until the **plainweave producer binary is
+  reshipped** (v1.0.0 → v1.1.0 on PATH). Shipped consumer is correct; the live contract
+  stays dark until that sibling install — owner escalation, unchanged by this release.
+
 ## Reading notes
 
 - The north-star is deliberately agent-workflow based. Warpline wins only when an
