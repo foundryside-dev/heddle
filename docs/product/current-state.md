@@ -32,12 +32,12 @@ federation-enriched reverify, now backed by the released stack.
   (plainweave repo present); reconfirm before claiming.
 - Observation `warpline-obs-da4909ac64` (P3): bare-`assert`-under-`-O` in `mcp.py` inputSchema
   guard (expires 2026-07-09 unless promoted).
-- **Sibling/federation work handed to the owner** (built at owner direction this session, NOT
-  warpline-repo, uncommitted in the siblings): the **wardline `scan_manifest` producer seam**
-  (+ delta-mode `--manifest-full-coverage` flag) that closes AMBER-2 / `weft-9a35aa00e7` so
-  plainweave stops degrading. 3 wardline files (`scan.py`, `run.py`, `test_scan_artifacts.py`),
-  tested + e2e-verified, **for you to commit**; plus plainweave fixture alignment and blessing
-  `weft.wardline.scan_manifest.v1` hub-side.
+- **scan_manifest seam — ✅ SHIPPED** (built at owner direction this session; a wardline/plainweave
+  artifact, not warpline's). The wardline producer is committed + released in **wardline `v1.2.0`**
+  (full seam incl the delta-mode `--manifest-full-coverage` flag); plainweave's consumer is done
+  (reads real manifests, CI-green). Bless/closure handover written at
+  `wardline/docs/handoffs/2026-07-01-scan-manifest-seam-closed.md`. Only the hub bless + ticket-close
+  remain (escalation #3).
 
 ## Open questions / blocked-on-owner (escalations)
 
@@ -56,8 +56,10 @@ federation-enriched reverify, now backed by the released stack.
    the gate on (OD-5 resolved-direction), (b) sign the glossary-freeze attestation, (c) decide
    whether the 3 consumer goldens join the GS-7 fixture set. **Delivering it to the hub is the
    owner's outward act.**
-3. **scan_manifest seam owner-side** (above) — commit the wardline diff, align plainweave, bless the
-   contract hub-side; then `weft-9a35aa00e7` / AMBER-2 closes.
+3. **scan_manifest seam — only the hub bless + close remain (governance, not engineering).** The
+   wardline producer + plainweave consumer are shipped (above). Remaining: bless
+   `weft.wardline.scan_manifest.v1` hub-side, then close `weft-9a35aa00e7` / AMBER-2. Package:
+   `wardline/docs/handoffs/2026-07-01-scan-manifest-seam-closed.md`.
 4. **Swarm coordination / provenance (owner awareness).** Uncoordinated swarm sessions keep landing
    cross-repo consumer work in shared trees (the `beea0f8` forward-port to `main` reconciled at
    release; the wardline tree co-mingled a doctor/glossary stream with the seam). Worth a
@@ -80,8 +82,8 @@ federation-enriched reverify, now backed by the released stack.
 
 ## Next session starts here
 
-#1 resolved (requirements member live) and #2's handover is now finalized + committed — so #2's
-only remainder is the **owner delivering it to the hub** (outward act). The top hands-on pickups
-are **#3 committing the scan_manifest seam** (closes `weft-9a35aa00e7`) and the clean repo-local
-follow-ups `warpline-9eae3eb86a` (ungated) or `warpline-17242c627b`. Also pending: pushing the
-local product-doc commits (`main` is ahead of `origin/main`).
+#1 (requirements live), #2 (handover finalized), and #3 (scan_manifest seam shipped) are all done
+or owner-side-only — what's left are the owner's outward acts (deliver the #2 handover; bless +
+close the #3 contract) plus pushing the local product-doc commits (`main` is ahead of
+`origin/main`). The top hands-on pickups are the clean repo-local follow-ups `warpline-9eae3eb86a`
+(ungated) or `warpline-17242c627b`.
